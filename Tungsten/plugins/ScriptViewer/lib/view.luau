@@ -5,23 +5,32 @@
 	Upvalues, Functions and Contents (a loaded table, or what a required
 	ModuleScript returns). The toolbar names what is shown and what kind
 	of thing it is (hover it for notes). Each data sub-tab has views,
-	kept in the plugin's settings (1.4):
-		Tree      rows that open in place (tables, functions)
-		List      every row with its path
-		Table     the rows written as a Luau table
-		Function  rows grouped under the function that owns them
-		          (not for Functions, which is already by function)
-	Constants, Upvalues and Contents have a References area (1.5): select a
-	constant or an upvalue and it lists the other functions that use the
-	same constant or hold the same upvalue; double-click one to load it.
-	Editing (1.6): right-click a row for the "scriptviewer.row" menu
-	(Change value…, Set to nil / Remove entry, Add entry…, Rename key…,
-	Look into it, Keep in a variable…, Copy); double-click a row that
-	doesn't open to change it; the Table view can be edited and applied.
+	kept in the plugin's settings:
+		Tree    explore and change in place: rows open into tables,
+		        functions and upvalues
+		List    find things: every row flat with its full path, a search
+		        box (key, path or value text) and a type filter
+		Table   bulk changes and copying: the rows as a Luau table,
+		        editable, Apply / Revert
+	Constants and Upvalues also have a scope: "This function", or "With
+	nested functions" (every nested function's constants; the upvalues of
+	the running copies of nested functions), each under a heading.
+	A sub-tab's work area scrolls when the window is small, so the list
+	keeps a useful height. References (a toggle on the toolbar) shows,
+	under the list, the other functions that use the selected constant or
+	hold the selected upvalue; double-click one to load it.
+	Editing: right-click a row for the "scriptviewer.row" menu; double-
+	click a row that doesn't open to change it; the Table view can be
+	edited and applied.
+
+	Switching views never runs inside the dropdown: the work is deferred
+	and guarded, a newer switch wins, and a failure says why in the bar.
 
 		local view = View.new(page, api, inspect)
 		view:Show(subject)        -- what to show (from Inspect.subject)
 		view:Select("source")     -- open a sub-tab
+		view:SetMode(id, mode)    -- Tree / List / Table (saved)
+		view:SetScope(id, scope)  -- "This function" / "With nested functions" (saved)
 		view:Opened()             -- the plugin's tab was opened (decompiles if waiting)
 		view.Subject ; view.Tabs ; view.Destroyed
 ]]
@@ -35,27 +44,35 @@ local Refs = P.import("lib/refs")
 local Actions = P.import("lib/actions")
 local Edit = P.import("lib/edit")
 
-local REFS = 150 -- height of the References area under a list
-
 local View = {}
 View.__index = View
 -- the editing modules, for other plugins and the tests: view.Edit, view.Actions
 View.Edit = Edit
 View.Actions = Actions
 
--- Sub-tabs in order. Later parts add theirs here.
+-- Sub-tabs in order.
 View.Panels = {
 	{ Id = "source", Title = "Source", Icon = "console" },
-	{ Id = "constants", Title = "Constants", Icon = "type_number", Data = true, Setting = "constantsView", Modes = { "Tree", "List", "Table", "Function" }, Refs = true },
-	{ Id = "upvalues", Title = "Upvalues", Icon = "variable", Data = true, Setting = "upvaluesView", Modes = { "Tree", "List", "Table", "Function" }, Refs = true },
+	{ Id = "constants", Title = "Constants", Icon = "type_number", Data = true, Setting = "constantsView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "constantsScope" },
+	{ Id = "upvalues", Title = "Upvalues", Icon = "variable", Data = true, Setting = "upvaluesView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "upvaluesScope" },
 	{ Id = "functions", Title = "Functions", Icon = "type_function", Data = true, Setting = "functionsView", Modes = { "Tree", "List", "Table" } },
-	{ Id = "contents", Title = "Contents", Icon = "type_table", Data = true, Setting = "contentsView", Modes = { "Tree", "List", "Table", "Function" }, Refs = true },
+	{ Id = "contents", Title = "Contents", Icon = "type_table", Data = true, Setting = "contentsView", Modes = { "Tree", "List", "Table" }, Refs = true },
 }
-View.Modes = { "Tree", "List", "Table", "Function" }
+View.Modes = { "Tree", "List", "Table" }
+View.Scopes = { "This function", "With nested functions" }
+-- the List view's type filter
+View.TypeFilters = { "Any type", "string", "number", "boolean", "table", "function", "Instance", "other" }
+local KNOWN_TYPES = { string = true, number = true, boolean = true, table = true, ["function"] = true, Instance = true }
 local PANEL = {}
 for _, def in View.Panels do
 	PANEL[def.Id] = def
 end
+
+-- The work area is at least this tall; in a smaller window it scrolls.
+View.ListMin = 420 -- the list's least height
+View.RefsHeight = 210 -- the References area, when shown
+local FILTER_ROW = 28
+local PAD = 8
 
 -- Name column: indented by depth, with ▸ / ▾ on things that open.
 local function treeName(node): string
@@ -65,12 +82,12 @@ end
 
 local VALUE_COLUMNS = {
 	Tree = {
-		{ Key = "Name", Title = "Name", Width = 190, Get = treeName },
+		{ Key = "Name", Title = "Name", Width = 220, Get = treeName },
 		{ Key = "Type", Title = "Type", Width = 110, Type = "valueType" },
 		{ Key = "ValueText", Title = "Value", Flex = true, Min = 160, Mono = true },
 	},
 	List = {
-		{ Key = "Path", Title = "Path", Width = 230, Mono = true },
+		{ Key = "Path", Title = "Path", Width = 300, Mono = true },
 		{ Key = "Type", Title = "Type", Width = 110, Type = "valueType" },
 		{ Key = "ValueText", Title = "Value", Flex = true, Min = 160, Mono = true },
 	},
@@ -140,7 +157,6 @@ function View.new(page: Frame, api, inspect)
 end
 
 function View:_buildPanel(id: string, holder: Frame)
-	local api = self.Api
 	if PANEL[id].Data then
 		self:_buildDataPanel(id, holder)
 		return
@@ -148,32 +164,70 @@ function View:_buildPanel(id: string, holder: Frame)
 	self:_buildSource(holder)
 end
 
--- The view a data panel uses, from the plugin's settings (Tree when the
--- setting holds a view this panel doesn't have).
-function View:_mode(id: string): string
-	local ok, value = pcall(self.Api.settings.get, PANEL[id].Setting)
-	if ok and table.find(PANEL[id].Modes, value) then
-		return value
-	end
-	return "Tree"
+local function setting(api, key: string): any
+	local ok, value = pcall(api.settings.get, key)
+	return if ok then value else nil
 end
 
--- A data panel: a toolbar (view, what is shown) over a list.
+-- The view a data panel uses, from the plugin's settings (Tree when the
+-- setting holds a view this panel doesn't have, e.g. an old "Function").
+function View:_mode(id: string): string
+	local value = setting(self.Api, PANEL[id].Setting)
+	return if table.find(PANEL[id].Modes, value) then value else "Tree"
+end
+
+-- The scope of Constants / Upvalues, from the plugin's settings.
+function View:_scope(id: string): string
+	local key = PANEL[id].Scope
+	local value = if key then setting(self.Api, key) else nil
+	return if table.find(View.Scopes, value) then value else View.Scopes[1]
+end
+
+local function nested(panel): boolean
+	return panel.Scope == View.Scopes[2]
+end
+
+-- A data panel: a toolbar over a work area that scrolls when the window is
+-- small. The work area holds the List view's filter row, the list (or the
+-- Table view's text) and the References area when it is on.
 function View:_buildDataPanel(id: string, holder: Frame)
 	local api = self.Api
+	local def = PANEL[id]
 	local layout = api.ui.page({ Parent = holder, Toolbar = true, Name = "Panel_" .. id })
-	local panel = { Holder = holder, Page = layout, Body = layout.Body, Data = true, Expanded = {}, Closed = {}, Mode = self:_mode(id) }
+	local panel = {
+		Holder = holder, Page = layout, Body = layout.Body, Data = true, Expanded = {}, Closed = {},
+		Mode = self:_mode(id), Scope = self:_scope(id), Token = 0, Search = "", TypeFilter = View.TypeFilters[1],
+	}
 	self.Panels[id] = panel
+	local order = 0
+	local function nextOrder(): number
+		order += 1
+		return order
+	end
 	panel.Switch = api.ui.new("Dropdown", {
 		Parent = layout.Toolbar,
 		Name = "View",
-		Width = 110,
-		Options = PANEL[id].Modes,
+		Width = 90,
+		Options = def.Modes,
 		Value = panel.Mode,
 		OnChanged = function(value)
-			api.settings.set(PANEL[id].Setting, value)
+			self:SetMode(id, value)
 		end,
 	})
+	panel.Switch.Instance.LayoutOrder = nextOrder()
+	if def.Scope then
+		panel.ScopeSwitch = api.ui.new("Dropdown", {
+			Parent = layout.Toolbar,
+			Name = "Scope",
+			Width = 170,
+			Options = View.Scopes,
+			Value = panel.Scope,
+			OnChanged = function(value)
+				self:SetScope(id, value)
+			end,
+		})
+		panel.ScopeSwitch.Instance.LayoutOrder = nextOrder()
+	end
 	-- Table view: write the edited text back, or put it back as it is
 	panel.Apply = api.ui.new("Button", {
 		Parent = layout.Toolbar,
@@ -185,6 +239,7 @@ function View:_buildDataPanel(id: string, holder: Frame)
 			Actions.applyText(self, id)
 		end,
 	})
+	panel.Apply.Instance.LayoutOrder = nextOrder()
 	panel.Revert = api.ui.new("Button", {
 		Parent = layout.Toolbar,
 		Name = "Revert",
@@ -195,8 +250,7 @@ function View:_buildDataPanel(id: string, holder: Frame)
 			self:_render(id)
 		end,
 	})
-	panel.Apply.Instance.LayoutOrder = 2
-	panel.Revert.Instance.LayoutOrder = 3
+	panel.Revert.Instance.LayoutOrder = nextOrder()
 	if id == "contents" then
 		panel.Add = api.ui.new("Button", {
 			Parent = layout.Toolbar,
@@ -211,48 +265,163 @@ function View:_buildDataPanel(id: string, holder: Frame)
 				end
 			end,
 		})
-		panel.Add.Instance.LayoutOrder = 4
+		panel.Add.Instance.LayoutOrder = nextOrder()
+	end
+	if def.Refs then
+		panel.RefsToggle = api.ui.new("Toggle", {
+			Parent = layout.Toolbar,
+			Name = "References",
+			Text = "References",
+			Value = setting(api, "showReferences") == true,
+			OnChanged = function(on)
+				pcall(api.settings.set, "showReferences", on == true)
+			end,
+		})
+		panel.RefsToggle.Instance.LayoutOrder = nextOrder()
 	end
 	panel.Info = api.ui.new("Label", { Parent = layout.Toolbar, Name = "Info", Text = "", Style = "muted", Size = UDim2.new(1, -130, 1, 0) })
-	panel.Info.LayoutOrder = 5
+	panel.Info.LayoutOrder = nextOrder()
 	panel.Info.TextTruncate = Enum.TextTruncate.AtEnd
 	-- hovering the bar shows all of it
 	pcall(api.tooltip.attach, panel.Info, function()
 		return panel.InfoFull or panel.Info.Text
 	end)
+
+	-- the work area
+	panel.Scroll = api.ui.new("Scroll", { Parent = layout.Body, Name = "Work", Direction = "Y" })
+	local canvas = Instance.new("Frame")
+	canvas.Name = "Canvas"
+	canvas.BackgroundTransparency = 1
+	canvas.Size = UDim2.new(1, 0, 0, View.ListMin)
+	canvas.Parent = panel.Scroll.Content
+	panel.Canvas = canvas
+	-- the List view's filter row: search, type, count
+	local filterRow = Instance.new("Frame")
+	filterRow.Name = "Filter"
+	filterRow.BackgroundTransparency = 1
+	filterRow.Position = UDim2.fromOffset(12, PAD)
+	filterRow.Size = UDim2.new(1, -24, 0, FILTER_ROW)
+	filterRow.Parent = canvas
+	panel.FilterRow = filterRow
+	local filterLayout = Instance.new("UIListLayout")
+	filterLayout.FillDirection = Enum.FillDirection.Horizontal
+	filterLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	filterLayout.Padding = UDim.new(0, 6)
+	filterLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	filterLayout.Parent = filterRow
+	panel.SearchBox = api.ui.new("Input", {
+		Parent = filterRow,
+		Name = "Search",
+		Width = 240,
+		Placeholder = "Search keys, paths and values",
+		Text = "",
+		OnTyping = function(text)
+			panel.Search = tostring(text or "")
+			if panel.Mode == "List" then
+				self:_render(id)
+			end
+		end,
+	})
+	panel.SearchBox.Instance.LayoutOrder = 1
+	panel.TypeSwitch = api.ui.new("Dropdown", {
+		Parent = filterRow,
+		Name = "Type",
+		Width = 120,
+		Options = View.TypeFilters,
+		Value = panel.TypeFilter,
+		OnChanged = function(value)
+			panel.TypeFilter = value
+			if panel.Mode == "List" then
+				self:_render(id)
+			end
+		end,
+	})
+	panel.TypeSwitch.Instance.LayoutOrder = 2
+	panel.Count = api.ui.new("Label", { Parent = filterRow, Name = "Count", Text = "", Style = "muted", Size = UDim2.new(0, 200, 1, 0) })
+	panel.Count.LayoutOrder = 3
+
 	local holderFrame = Instance.new("Frame")
 	holderFrame.Name = "ListHolder"
 	holderFrame.BackgroundTransparency = 1
-	holderFrame.Position = UDim2.fromOffset(12, 8)
-	holderFrame.Size = UDim2.new(1, -24, 1, if PANEL[id].Refs then -16 - REFS - 8 else -16)
-	holderFrame.Parent = layout.Body
+	holderFrame.Parent = canvas
 	panel.ListHolder = holderFrame
-	if PANEL[id].Refs then
-		self:_buildRefs(id, layout.Body)
+	if def.Refs then
+		self:_buildRefs(id, canvas)
 	end
-	-- the Table view: the rows written as a Luau table (read-only for now)
+	-- the Table view: the rows written as a Luau table
 	panel.Text = api.ui.new("TextEditor", {
-		Parent = layout.Body,
+		Parent = canvas,
 		Name = "TableText",
-		Position = UDim2.fromOffset(12, 8),
-		Size = UDim2.new(1, -24, 1, -16),
 		ReadOnly = true,
 		Text = "",
 	})
+	api.connect(layout.Body:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if not self.Destroyed then
+			self:_layout(id)
+		end
+	end)
 	self:_makeList(id)
-	-- the view setting changed (here, or on the plugin's page)
+	-- a setting changed (here, or on the plugin's page)
 	api.connect(api.settings.Changed, function(key)
-		if key == PANEL[id].Setting and not self.Destroyed then
+		if self.Destroyed then
+			return
+		end
+		if key == def.Setting then
 			local mode = self:_mode(id)
 			if mode ~= panel.Mode then
-				panel.Mode = mode
-				panel.Switch:SetValue(mode, true)
-				self:_makeList(id)
-				self:_fill(id)
+				self:SetMode(id, mode)
+			end
+		elseif key == def.Scope then
+			local scope = self:_scope(id)
+			if scope ~= panel.Scope then
+				self:SetScope(id, scope)
+			end
+		elseif key == "showReferences" and def.Refs then
+			local on = setting(api, "showReferences") == true
+			if panel.RefsToggle.Value ~= on then
+				panel.RefsToggle:Set(on)
+			end
+			self:_layout(id)
+			if on then
+				self:FindReferences(id, panel.List and panel.List:GetSelected()[1] or nil)
 			end
 		end
 	end)
 	self:_fill(id)
+end
+
+-- Is the References area shown for a panel?
+function View:_refsOn(id: string): boolean
+	local panel = self.Panels[id]
+	return panel ~= nil and panel.RefsFrame ~= nil and panel.Mode ~= "Table" and setting(self.Api, "showReferences") == true
+end
+
+-- Places the work area's parts: the filter row (List view), the list or
+-- the text, and References. The work area is the body's height, or more
+-- (then it scrolls) so the list keeps View.ListMin.
+function View:_layout(id: string)
+	local panel = self.Panels[id]
+	if not panel or not panel.Canvas then
+		return
+	end
+	local listMode = panel.Mode == "List"
+	local refs = self:_refsOn(id)
+	local top = PAD + (if listMode then FILTER_ROW + 6 else 0)
+	local bottom = PAD + (if refs then View.RefsHeight + PAD else 0)
+	local bodyHeight = panel.Body.AbsoluteSize.Y
+	local height = math.max(bodyHeight, top + View.ListMin + bottom)
+	panel.Canvas.Size = UDim2.new(1, 0, 0, height)
+	panel.FilterRow.Visible = listMode
+	local listHeight = height - top - bottom
+	panel.ListHolder.Position = UDim2.fromOffset(12, top)
+	panel.ListHolder.Size = UDim2.new(1, -24, 0, listHeight)
+	panel.Text.Instance.Position = UDim2.fromOffset(12, PAD)
+	panel.Text.Instance.Size = UDim2.new(1, -24, 0, height - PAD * 2)
+	if panel.RefsFrame then
+		panel.RefsFrame.Visible = refs
+		panel.RefsFrame.Position = UDim2.new(0, 12, 0, height - View.RefsHeight - PAD)
+		panel.RefsFrame.Size = UDim2.new(1, -24, 0, View.RefsHeight)
+	end
 end
 
 function View:_makeList(id: string)
@@ -261,14 +430,14 @@ function View:_makeList(id: string)
 	if panel.List then
 		panel.List:Destroy()
 	end
-	local listMode = if panel.Mode == "List" then "List" else "Tree" -- Function view uses the Tree columns
+	local listMode = if panel.Mode == "List" then "List" else "Tree"
 	local columns = if id == "functions" then FUNCTION_COLUMNS[listMode] else VALUE_COLUMNS[listMode]
-	if id == "contents" and listMode == "Tree" and panel.Mode ~= "Function" then
+	if id == "contents" and listMode == "Tree" then
 		columns = table.clone(columns)
 		columns[1] = table.clone(columns[1])
 		columns[1].Title = "Key"
 	end
-	-- the list shows in Tree / List / Function, the text in Table
+	-- the list shows in Tree / List, the text in Table
 	panel.ListHolder.Visible = panel.Mode ~= "Table"
 	panel.Text.Instance.Visible = panel.Mode == "Table"
 	panel.Apply.Instance.Visible = panel.Mode == "Table" and id ~= "functions"
@@ -276,10 +445,12 @@ function View:_makeList(id: string)
 	if panel.Add then
 		panel.Add.Instance.Visible = panel.Mode ~= "Table"
 	end
-	panel.Info.Size = UDim2.new(1, if panel.Mode == "Table" and id ~= "functions" then -300 elseif panel.Add then -240 else -130, 1, 0)
-	if panel.RefsFrame then
-		panel.RefsFrame.Visible = panel.Mode ~= "Table"
+	if panel.RefsToggle then
+		panel.RefsToggle.Instance.Visible = panel.Mode ~= "Table"
 	end
+	local used = 100 + (if panel.ScopeSwitch then 180 else 0) + (if panel.Mode == "Table" and id ~= "functions" then 180 elseif panel.Add then 110 else 0) + (if panel.RefsToggle and panel.Mode ~= "Table" then 120 else 0)
+	panel.Info.Size = UDim2.new(1, -used, 1, 0)
+	self:_layout(id)
 
 	panel.List = api.ui.new("List", {
 		Parent = panel.ListHolder,
@@ -296,7 +467,7 @@ function View:_makeList(id: string)
 			if type(node) ~= "table" then
 				return
 			end
-			if (panel.Mode == "Tree" or panel.Mode == "Function") and node.Expandable then
+			if panel.Mode == "Tree" and node.Expandable then
 				self:Toggle(id, node.Id)
 			elseif Edit.kindOf(node) and not node.Expandable then
 				-- a row that doesn't open: double-click changes it
@@ -312,6 +483,76 @@ function View:_makeList(id: string)
 	end
 end
 
+-- Runs a panel's rebuild after the current event (never inside a dropdown
+-- callback), guarded: a newer request wins, a failure says why in the bar.
+function View:_schedule(id: string, rebuildList: boolean)
+	local panel = self.Panels[id]
+	if not panel then
+		return
+	end
+	panel.Token += 1
+	local token = panel.Token
+	panel.Info.Text = "…"
+	task.defer(function()
+		if self.Destroyed or panel.Token ~= token then
+			return
+		end
+		local ok, err = pcall(function()
+			if rebuildList then
+				self:_makeList(id)
+			end
+			self:_fill(id)
+		end)
+		if not ok then
+			local text = ("couldn't show the %s view: %s"):format(panel.Mode, tostring(err))
+			panel.Info.Text = text
+			panel.InfoFull = text
+			pcall(self.Api.console.error, text)
+		end
+	end)
+end
+
+-- Switches a data panel's view (Tree / List / Table) and saves it.
+function View:SetMode(id: string, mode: string)
+	local panel = self.Panels[id]
+	if not panel then
+		return
+	end
+	if not table.find(PANEL[id].Modes, mode) then
+		mode = "Tree"
+	end
+	panel.Mode = mode
+	if panel.Switch:GetValue() ~= mode then
+		panel.Switch:SetValue(mode, true)
+	end
+	if setting(self.Api, PANEL[id].Setting) ~= mode then
+		pcall(self.Api.settings.set, PANEL[id].Setting, mode)
+	end
+	self:_schedule(id, true)
+end
+
+-- Switches Constants / Upvalues between this function and with its nested
+-- functions, and saves it.
+function View:SetScope(id: string, scope: string)
+	local panel = self.Panels[id]
+	if not panel or not PANEL[id].Scope then
+		return
+	end
+	if not table.find(View.Scopes, scope) then
+		scope = View.Scopes[1]
+	end
+	panel.Scope = scope
+	if panel.ScopeSwitch:GetValue() ~= scope then
+		panel.ScopeSwitch:SetValue(scope, true)
+	end
+	if setting(self.Api, PANEL[id].Scope) ~= scope then
+		pcall(self.Api.settings.set, PANEL[id].Scope, scope)
+	end
+	table.clear(panel.Expanded)
+	table.clear(panel.Closed)
+	self:_schedule(id, false)
+end
+
 ----------------------------------------------------------------------
 -- References
 ----------------------------------------------------------------------
@@ -322,8 +563,7 @@ function View:_buildRefs(id: string, parent: Instance)
 	local frame = Instance.new("Frame")
 	frame.Name = "References"
 	frame.BackgroundTransparency = 1
-	frame.Position = UDim2.new(0, 12, 1, -REFS - 8)
-	frame.Size = UDim2.new(1, -24, 0, REFS)
+	frame.Size = UDim2.new(1, -24, 0, View.RefsHeight)
 	frame.Parent = parent
 	panel.RefsFrame = frame
 	panel.RefsToken = 0
@@ -359,6 +599,7 @@ function View:OpenReference(result)
 end
 
 -- Searches the references of a row (in a thread; a newer selection wins).
+-- Nothing is searched while References is off.
 function View:FindReferences(id: string, node: any)
 	local panel = self.Panels[id]
 	if not panel or not panel.RefsFrame then
@@ -368,6 +609,11 @@ function View:FindReferences(id: string, node: any)
 	local token = panel.RefsToken
 	panel.RefsList:SetItems({})
 	panel.RefsNode = node
+	if setting(self.Api, "showReferences") ~= true then
+		panel.RefsInfo.Text = "References: off"
+		panel.RefsResults = nil
+		return
+	end
 	local ok, why = Refs.canSearch(node)
 	if not ok then
 		panel.RefsInfo.Text = "References: " .. tostring(why)
@@ -410,7 +656,7 @@ function View:Toggle(id: string, nodeId: string)
 		return
 	end
 	if panel.Headings and panel.Headings[nodeId] then
-		-- Function view headings start open; this closes or opens one
+		-- function headings start open; this closes or opens one
 		panel.Closed[nodeId] = not panel.Closed[nodeId] or nil
 	else
 		panel.Expanded[nodeId] = not panel.Expanded[nodeId] or nil
@@ -418,9 +664,15 @@ function View:Toggle(id: string, nodeId: string)
 	self:_render(id)
 end
 
+local function showEmptySlots(api): boolean
+	return setting(api, "showEmpty") == true
+end
+
 -- The root rows of a data panel for the subject (and why there are none).
 function View:_roots(id: string): ({ any }, string?)
 	local subject = self.Subject
+	local panel = self.Panels[id]
+	local wide = panel ~= nil and nested(panel) or (panel == nil and PANEL[id].Scope ~= nil and self:_scope(id) == View.Scopes[2])
 	if subject == nil or subject.Kind == "none" then
 		return {}, "nothing loaded"
 	end
@@ -435,7 +687,7 @@ function View:_roots(id: string): ({ any }, string?)
 	end
 	if id == "upvalues" and (subject.Kind == "script" or subject.Kind == "module") then
 		-- a script's main function here is a fresh copy with no running
-		-- upvalues: its running functions hold them (even with no copy)
+		-- upvalues: its running functions hold them (nested ones included)
 		local live, why = Rows.liveFunctions(subject)
 		if not live then
 			return {}, why
@@ -446,13 +698,15 @@ function View:_roots(id: string): ({ any }, string?)
 	if fn == nil then
 		return {}, if subject.Kind == "table" then "a table has no " .. id .. " (its entries are in the Contents sub-tab)" else "this has no function to look into"
 	end
-	local showEmpty = false
-	pcall(function()
-		showEmpty = self.Api.settings.get("showEmpty") == true
-	end)
 	if id == "constants" then
-		return Rows.constants(fn, { ShowEmpty = showEmpty })
+		if wide then
+			return Rows.constantsByFunction(fn, { ShowEmpty = showEmptySlots(self.Api) })
+		end
+		return Rows.constants(fn, { ShowEmpty = showEmptySlots(self.Api) })
 	elseif id == "upvalues" then
+		if wide then
+			return Rows.upvaluesWithNested(fn)
+		end
 		return Rows.upvalues(fn)
 	end
 	return Rows.functions(fn)
@@ -583,47 +837,28 @@ function View:CopySource(): boolean
 	return ok
 end
 
--- The Function view's headings for a panel.
-function View:_byFunction(id: string): ({ any }, string?)
-	local subject = self.Subject
-	if id == "contents" then
-		return Rows.contentsByFunction(subject.Table)
-	end
-	local showEmpty = false
-	pcall(function()
-		showEmpty = self.Api.settings.get("showEmpty") == true
-	end)
-	if id == "constants" then
-		return Rows.constantsByFunction(subject.Fn, { ShowEmpty = showEmpty })
-	end
-	if subject.Kind == "script" or subject.Kind == "module" then
-		local live, why = Rows.liveFunctions(subject)
-		if not live then
-			return {}, why
-		end
-		return Rows.upvaluesOfFunctions(live)
-	end
-	return Rows.upvaluesByFunction(subject.Fn)
-end
-
--- The Table view: the panel's data written as a Luau table.
+-- The Table view: the panel's data written as a Luau table. Rows under
+-- function headings (a scope with nested functions, a script's running
+-- functions) are written by function and can't be applied back.
 function View:_renderText(id: string)
 	local panel = self.Panels[id]
 	local subject = self.Subject
-	local text
+	local headings = panel.Roots and panel.Roots[1] and panel.Roots[1].Kind == "heading"
+	local text, capped
 	if panel.Why then
 		text = "-- " .. panel.Why
 	else
 		local value, why
-		if id == "upvalues" and panel.Roots[1] and panel.Roots[1].Kind == "heading" then
-			-- a script's running functions: their upvalues, by function
+		if headings then
 			value = {}
 			for _, heading in panel.Roots do
-				local upvalues = {}
+				local rows = {}
 				for _, node in Rows.childrenOf(heading) do
-					upvalues[node.Index] = node.Value
+					if node.Index ~= nil then
+						rows[node.Index] = node.Value
+					end
 				end
-				value[heading.Key:gsub("%s+", " ")] = upvalues
+				value[(heading.Key:gsub("%s+", " "))] = rows
 			end
 		else
 			value, why = Rows.plain(id, if id == "contents" then subject.Table else subject.Fn)
@@ -631,14 +866,18 @@ function View:_renderText(id: string)
 		if value == nil then
 			text = "-- " .. tostring(why or "nothing to write")
 		else
-			local ok, written = pcall(Serialize.write, value)
+			local ok, written, wasCapped = pcall(Serialize.write, value)
 			text = if ok then written else "-- couldn't write it: " .. tostring(written)
+			capped = ok and wasCapped
 		end
 	end
+	if capped then
+		text = ("-- long: tables past the first %d entries are KEEP (kept as they are)\n"):format(Serialize.MaxTotal) .. text
+	end
 	panel.Text:SetText(text, true)
-	-- editable where it can be written back: not Functions, not a script's
-	-- upvalues by function, not when there is nothing to write
-	local editable = id ~= "functions" and not panel.Why and text:sub(1, 3) ~= "-- " and not (id == "upvalues" and panel.Roots[1] and panel.Roots[1].Kind == "heading")
+	-- editable where it can be written back: not Functions, not rows by
+	-- function, not when there is nothing to write
+	local editable = id ~= "functions" and not panel.Why and not headings and (capped or text:sub(1, 3) ~= "-- ")
 	panel.Text:SetReadOnly(not editable)
 	panel.Apply:SetEnabled(editable)
 	panel.Revert:SetEnabled(editable)
@@ -646,88 +885,97 @@ function View:_renderText(id: string)
 	return text
 end
 
--- Rows for a data panel (Tree, List, Function or Table view).
+-- Does a row pass the List view's search and type filter?
+local function passes(node, needle: string, typeFilter: string): boolean
+	if typeFilter ~= View.TypeFilters[1] then
+		local kind = node.Type
+		if typeFilter == "other" then
+			if KNOWN_TYPES[kind] then
+				return false
+			end
+		elseif kind ~= typeFilter then
+			return false
+		end
+	end
+	if needle == "" then
+		return true
+	end
+	for _, field in { node.Key, node.Path, node.ValueText } do
+		if type(field) == "string" and field:lower():find(needle, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Rows for a data panel (Tree, List or Table view).
 function View:_render(id: string)
 	local panel = self.Panels[id]
 	local roots = panel.Roots or {}
 	local rows, capped
 	panel.Headings = nil
-	local functionsShown = nil
+	local headings = {}
+	for _, node in roots do
+		if node.Kind == "heading" then
+			headings[node.Id] = true
+		end
+	end
+	local hasHeadings = next(headings) ~= nil
 	if panel.Mode == "Table" then
 		self:_renderText(id)
 		rows, capped = {}, false
 	elseif panel.Mode == "List" then
 		rows, capped = Rows.flat(roots)
-	elseif panel.Mode == "Function" and not panel.Why then
-		-- built once per subject (a script's needs a memory search), then
-		-- opening and closing rows only redraws
-		if not panel.FunctionRoots then
-			panel.FunctionRoots, panel.FunctionRootsWhy = self:_byFunction(id)
-		end
-		local headings, why = panel.FunctionRoots, panel.FunctionRootsWhy
-		panel.Headings = {}
-		for _, node in headings do
-			panel.Headings[node.Id] = true
-		end
-		functionsShown = #headings
-		rows = Rows.tree(headings, function(node)
-			if panel.Headings[node.Id] then
+	elseif hasHeadings then
+		-- function headings start open
+		panel.Headings = headings
+		rows = Rows.tree(roots, function(node)
+			if headings[node.Id] then
 				return not panel.Closed[node.Id]
 			end
 			return panel.Expanded[node.Id] == true
 		end)
 		capped = #rows >= Rows.MaxRows
-		if why and #headings == 0 then
-			panel.FunctionWhy = why
-		else
-			panel.FunctionWhy = nil
-		end
 	else
-		local headings = {}
-		for _, node in roots do
-			if node.Kind == "heading" then
-				headings[node.Id] = true
-			end
-		end
-		if next(headings) then
-			-- function headings (a script's running functions) start open
-			panel.Headings = headings
-			rows = Rows.tree(roots, function(node)
-				if headings[node.Id] then
-					return not panel.Closed[node.Id]
-				end
-				return panel.Expanded[node.Id] == true
-			end)
-		else
-			rows = Rows.tree(roots, panel.Expanded)
-		end
+		rows = Rows.tree(roots, panel.Expanded)
 		capped = #rows >= Rows.MaxRows
 	end
-	local items = table.create(#rows)
 	local display = self.Api.types.display
-	for index, node in rows do
-		local item = node
+	local noun = ({ functions = "function", constants = "constant", upvalues = "upvalue", contents = "entry" })[id] or "row"
+	for _, node in rows do
 		if node.Kind == "heading" then
-			node.ValueText = ("%d %s"):format(node.Count or 0, if id == "constants" then "constants" else "upvalues")
+			node.ValueText = ("%d %s"):format(node.Count or 0, if (node.Count or 0) == 1 then noun elseif noun == "entry" then "entries" else noun .. "s")
 		elseif id ~= "functions" then
 			local ok, text = pcall(display, node.Value)
 			node.ValueText = if node.Note then ("(%s)"):format(node.Note) .. (if node.Value ~= nil then " " .. (if ok then text else "?") else "") else (if ok then text else "?")
 		end
-		items[index] = item
+	end
+	local filtered = nil
+	if panel.Mode == "List" then
+		-- flat rows with their paths: headings are in the paths
+		local needle = panel.Search:lower():match("^%s*(.-)%s*$")
+		local kept, total = {}, 0
+		for _, node in rows do
+			if node.Kind ~= "heading" then
+				total += 1
+				if passes(node, needle, panel.TypeFilter) then
+					table.insert(kept, node)
+				end
+			end
+		end
+		filtered = needle ~= "" or panel.TypeFilter ~= View.TypeFilters[1]
+		panel.Count.Text = if filtered then ("%d of %d"):format(#kept, total) else ("%d %s"):format(total, if total == 1 then "row" else "rows")
+		rows = kept
 	end
 	panel.Rows = rows
 	if panel.Mode ~= "Table" then
-		panel.List:SetItems(items)
+		panel.List:SetItems(rows)
 	end
 	local count = View.count(roots)
-	if roots[1] and roots[1].Kind == "heading" and panel.Mode ~= "Function" then
-		functionsShown = #roots -- roots are functions (a script's running ones)
-	end
-	local noun = ({ functions = "function", constants = "constant", upvalues = "upvalue", contents = "entry" })[id] or "row"
 	local plural = if count == 1 then noun elseif noun == "entry" then "entries" else noun .. "s"
 	local text = if panel.Why then panel.Why else ("%d %s"):format(count, plural)
-	if functionsShown and not panel.Why then
-		text = if panel.FunctionWhy then panel.FunctionWhy else text .. (" · %d %s"):format(functionsShown, if functionsShown == 1 then "function" else "functions")
+	if hasHeadings and not panel.Why then
+		text ..= (" · %d %s"):format(#roots, if #roots == 1 then "function" else "functions")
 	end
 	if capped then
 		text ..= (" · showing the first %d rows"):format(Rows.MaxRows)
@@ -736,7 +984,7 @@ function View:_render(id: string)
 	panel.InfoFull = text
 	-- an empty list says why in its middle, in full (the bar may cut it)
 	if panel.List and panel.List.EmptyLabel then
-		panel.List.EmptyLabel.Text = if panel.Why then panel.Why else "Nothing here"
+		panel.List.EmptyLabel.Text = if panel.Why then panel.Why elseif filtered then "Nothing matches" else "Nothing here"
 		panel.List.EmptyLabel.TextWrapped = true
 		panel.List.EmptyLabel.Size = UDim2.new(1, -24, 0, 60)
 	end
@@ -745,8 +993,8 @@ function View:_render(id: string)
 end
 
 -- How many rows a panel's roots stand for: the rows themselves, or, when
--- they are function headings (a script's running functions), the rows
--- under them. The pill and the bar both use this.
+-- they are function headings, the rows under them. The pill and the bar
+-- both use this.
 function View.count(roots: { any }): number
 	if roots[1] and roots[1].Kind == "heading" then
 		local count = 0
@@ -764,17 +1012,17 @@ function View:_fill(id: string)
 	if not panel then
 		return -- not built yet: filled when it first shows
 	end
-	local subject = self.Subject
 	if panel.Source then
 		self:_fillSource()
 		return
 	end
 	if panel.Data then
-		local roots, why = self:_roots(id)
+		local ok, roots, why = pcall(self._roots, self, id)
+		if not ok then
+			roots, why = {}, "couldn't read it: " .. tostring(roots)
+		end
 		panel.Roots, panel.Why = roots, why
-		panel.FunctionRoots, panel.FunctionRootsWhy = nil, nil
 		self:_render(id)
-		return
 	end
 end
 
@@ -813,8 +1061,8 @@ function View:Show(subject)
 	-- counts on the pills of data sub-tabs that haven't been opened yet
 	for _, def in View.Panels do
 		if def.Data and not self.Panels[def.Id] then
-			local roots, why = self:_roots(def.Id)
-			self.Tabs:Badge(def.Id, if why then nil else View.count(roots))
+			local ok, roots, why = pcall(self._roots, self, def.Id)
+			self.Tabs:Badge(def.Id, if ok and not why then View.count(roots) else nil)
 		end
 	end
 end

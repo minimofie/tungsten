@@ -57,6 +57,7 @@ local Plugins, Loaded, C = T.Plugins, T.Loaded, T.Console
 local function exports()
 	return Plugins.get("scriptviewer").Exports
 end
+Plugins.get("scriptviewer").Api.settings.set("showReferences", true) -- References is off by default
 local function faultLines()
 	local out = {}
 	for _, line in C.Lines do
@@ -142,9 +143,9 @@ H.advance(0.1)
 upvalues.Switch:SetValue("Table")
 H.advance(0.2)
 check("Table view: upvalues by function", upvalues.Text:GetText():find("toggle", 1, true) ~= nil and upvalues.Text:GetText():find("speed = 3", 1, true) ~= nil, upvalues.Text:GetText())
-upvalues.Switch:SetValue("Function")
+upvalues.Switch:SetValue("Tree")
 H.advance(0.2)
-check("Function view: the same functions", #upvalues.Roots == 2 and keys(upvalues):find("toggle", 1, true) ~= nil)
+check("Tree view: the same functions", #upvalues.Roots == 2 and keys(upvalues):find("toggle", 1, true) ~= nil)
 upvalues.Switch:SetValue("Tree")
 H.advance(0.2)
 -- references from a script's upvalue
@@ -199,14 +200,12 @@ T.Tabs:Select("scriptviewer")
 H.advance(0.5)
 check("opening the tab catches up", view.TitleLabel.Text == "DoorScript" and keys(upvalues):find("toggle", 1, true) ~= nil)
 check("the Upvalues pill counts upvalues, the same as its bar", H.find(H.find(H.find(view.Tabs.Instance, "Tab_upvalues"), "Badge"), "Text").Text == "3")
-upvalues.Switch:SetValue("Function")
-H.advance(0.2)
 searches = H.FILTERGC_CALLS or 0
 view:Toggle("upvalues", upvalues.Roots[1].Id)
 H.advance(0.1)
 view:Toggle("upvalues", upvalues.Roots[1].Id)
 H.advance(0.1)
-check("opening and closing rows in the Function view doesn't search again", (H.FILTERGC_CALLS or 0) == searches, (H.FILTERGC_CALLS or 0) - searches)
+check("opening and closing function headings doesn't search again", (H.FILTERGC_CALLS or 0) == searches, (H.FILTERGC_CALLS or 0) - searches)
 upvalues.Switch:SetValue("Tree")
 H.advance(0.2)
 local badKey = setmetatable({}, { __tostring = function() error("no text for you") end })

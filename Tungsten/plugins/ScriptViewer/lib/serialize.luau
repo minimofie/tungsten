@@ -6,8 +6,10 @@
 	comment saying what they are, so the same text can later be read back
 	and only the changed values written (editing, part 1.6).
 
-		Serialize.write(value, opts?) -> text
+		Serialize.write(value, opts?) -> text, capped
 			opts.MaxDepth  (default 8)   opts.MaxEntries per table (default 500)
+			opts.MaxTotal  entries in all (default 20000): past it, tables are
+			KEEP with a note and capped is true (the text stays safe to apply)
 		Serialize.KEEP  -- the placeholder value
 ]]
 
@@ -16,6 +18,7 @@ local P = ...
 local Serialize = {}
 Serialize.MaxDepth = 8
 Serialize.MaxEntries = 500
+Serialize.MaxTotal = 20000
 
 Serialize.KEEP = table.freeze(setmetatable({}, {
 	__tostring = function()
@@ -132,6 +135,8 @@ function Serialize.write(root: any, opts: { [string]: any }?): string
 	local o = opts or {}
 	local maxDepth = o.MaxDepth or Serialize.MaxDepth
 	local maxEntries = o.MaxEntries or Serialize.MaxEntries
+	local maxTotal = o.MaxTotal or Serialize.MaxTotal
+	local total, capped = 0, false
 	local out = {}
 	local seen = {}
 	local writeValue
@@ -158,6 +163,7 @@ function Serialize.write(root: any, opts: { [string]: any }?): string
 				break
 			end
 			written += 1
+			total += 1
 			table.insert(out, inner)
 			writeValue(rawget(t, index), depth + 1, inner)
 			table.insert(out, ",\n")
@@ -166,6 +172,7 @@ function Serialize.write(root: any, opts: { [string]: any }?): string
 			local text = keyText(key)
 			if written < maxEntries and text then
 				written += 1
+				total += 1
 				table.insert(out, inner .. text .. " = ")
 				writeValue(rawget(t, key), depth + 1, inner)
 				table.insert(out, ",\n")
@@ -193,6 +200,9 @@ function Serialize.write(root: any, opts: { [string]: any }?): string
 				table.insert(out, "KEEP " .. comment("a table shown earlier (shared or cyclic)"))
 			elseif depth >= maxDepth then
 				table.insert(out, "KEEP " .. comment("nested too deep to show"))
+			elseif total >= maxTotal then
+				capped = true
+				table.insert(out, "KEEP " .. comment(("not shown: the text stops at %d entries"):format(maxTotal)))
 			else
 				writeTable(value, depth, indent)
 			end
@@ -205,7 +215,7 @@ function Serialize.write(root: any, opts: { [string]: any }?): string
 	end
 
 	writeValue(root, 0, "")
-	return table.concat(out)
+	return table.concat(out), capped
 end
 
 return Serialize

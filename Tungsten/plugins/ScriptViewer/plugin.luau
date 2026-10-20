@@ -8,7 +8,8 @@
 		1.1  the tab and what a loaded item is (lib/inspect), reveal
 		1.2  Constants, Upvalues and Functions (Tree / List), read-only
 		1.3  Source (decompiled, read-only) and Contents
-		1.4  views: Tree, List, Table (as a Luau table), Function (by function)
+		1.4  views: Tree, List (search, type filter), Table (as a Luau table);
+		     scope with nested functions (revamp)
 		1.5  references of constants and upvalues (filtergc)
 		1.6  editing: right-click menu + forms, editable Table view, Undo
 		1.7  links from the other plugins, menus, docs
@@ -72,10 +73,13 @@ return {
 	Icon = "type_function",
 	Order = 1,
 	Settings = {
-		{ Id = "constantsView", Kind = "choice", Text = "Constants view", Hint = "Tree: open in place · List: with paths · Table: as a Luau table · Function: by function", Options = { "Tree", "List", "Table", "Function" }, Default = "Tree" },
-		{ Id = "upvaluesView", Kind = "choice", Text = "Upvalues view", Options = { "Tree", "List", "Table", "Function" }, Default = "Tree" },
+		{ Id = "constantsView", Kind = "choice", Text = "Constants view", Hint = "Tree: explore and change in place · List: search and filter, with paths · Table: as a Luau table, bulk changes", Options = { "Tree", "List", "Table" }, Default = "Tree" },
+		{ Id = "upvaluesView", Kind = "choice", Text = "Upvalues view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
 		{ Id = "functionsView", Kind = "choice", Text = "Functions view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
-		{ Id = "contentsView", Kind = "choice", Text = "Contents view", Options = { "Tree", "List", "Table", "Function" }, Default = "Tree" },
+		{ Id = "contentsView", Kind = "choice", Text = "Contents view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
+		{ Id = "constantsScope", Kind = "choice", Text = "Constants scope", Hint = "also every nested function's constants", Options = { "This function", "With nested functions" }, Default = "This function" },
+		{ Id = "upvaluesScope", Kind = "choice", Text = "Upvalues scope", Hint = "also the upvalues of nested functions' running copies", Options = { "This function", "With nested functions" }, Default = "This function" },
+		{ Id = "showReferences", Kind = "toggle", Text = "Show references", Hint = "under the list: other functions using the selected constant or upvalue", Default = false },
 		{ Id = "showEmpty", Kind = "toggle", Text = "Show empty constant slots", Hint = "slots the compiler left empty", Default = false },
 		{ Id = "constantAnyType", Kind = "toggle", Text = "Constants may change type", Hint = "off: a string stays a string; the bytecode may expect the type", Default = false },
 	},

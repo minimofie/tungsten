@@ -37,6 +37,7 @@ local T = genv.Tungsten.Context
 local Plugins, Loaded, C = T.Plugins, T.Loaded, T.Console
 local record = Plugins.get("scriptviewer")
 local exports, api = record.Exports, record.Api
+api.settings.set("showReferences", true) -- References is off by default
 check("integrity lists filtergc (46 functions)", (function()
 	for _, line in C.Lines do
 		if line.Plain:find("51/51 executor functions", 1, true) then
@@ -144,10 +145,12 @@ view:OpenReference(clickRow)
 H.advance(0.3)
 check("double-clicking a reference loads that function", Loaded.value() == onClick and exports.subject().Title == "onClick")
 check("…and the References area clears for the new rows", constants.RefsInfo.Text:find("select a constant or an upvalue", 1, true) ~= nil, constants.RefsInfo.Text)
-constants.Switch:SetValue("Function")
+view:SetScope("constants", "With nested functions")
 H.advance(0.2)
 pick(constants, row(constants, "2", 1))
-check("in the Function view too", results(constants) == "onClick (this one)", results(constants))
+check("with nested functions too", results(constants) == "onClick (this one)", results(constants))
+view:SetScope("constants", "This function")
+H.advance(0.2)
 constants.Switch:SetValue("Table")
 H.advance(0.2)
 check("the Table view hides the References area", constants.RefsFrame.Visible == false)

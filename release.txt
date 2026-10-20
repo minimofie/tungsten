@@ -160,7 +160,7 @@ ea31539add82 252 base/data/icons/type_vector.svg
 d290de6672a2 1178 base/data/icons/variable.png
 07ce11ab3752 317 base/data/icons/variable.svg
 324a1b1a36b6 7125 base/data/icons.luau
-b51e5166ef25 11090 base/data/manifest.luau
+49b5a4439989 11090 base/data/manifest.luau
 bf60bc105544 2830 base/datastore.luau
 cfd4e4d2b0c3 27044 base/explorer/actions.luau
 45d626bf4cf4 11534 base/explorer/api.luau
@@ -255,9 +255,9 @@ dd8267cb07be 16963 plugins/ScriptViewer/lib/actions.luau
 583da2d5072b 17787 plugins/ScriptViewer/lib/edit.luau
 f67586b4ebf5 12745 plugins/ScriptViewer/lib/inspect.luau
 41060032c80a 3974 plugins/ScriptViewer/lib/refs.luau
-dea85808afa9 21439 plugins/ScriptViewer/lib/rows.luau
-67f70ec86b1b 6638 plugins/ScriptViewer/lib/serialize.luau
+3429368d8af2 22419 plugins/ScriptViewer/lib/rows.luau
+7eaa0c3b5664 7088 plugins/ScriptViewer/lib/serialize.luau
 b10966f578c9 2705 plugins/ScriptViewer/lib/source.luau
-5fe11509aa82 29333 plugins/ScriptViewer/lib/view.luau
-6bff6e04ad0d 5271 plugins/ScriptViewer/plugin.luau
+e81d159714ae 37344 plugins/ScriptViewer/lib/view.luau
+63fac02dfcf4 5891 plugins/ScriptViewer/plugin.luau
 8026d0a01fa7 48352 plugins/manager.luau

@@ -7,8 +7,12 @@
 		Rows.upvalues(fn, opts)   -> root nodes   (debug.getupvalues)
 		Rows.functions(fn, opts)  -> root nodes   (debug.getprotos, nested)
 		Rows.entries(t)           -> root nodes   (a table's entries: the Contents sub-tab)
-		Rows.constantsByFunction / upvaluesByFunction / contentsByFunction
-		                          -> function headings with their rows (Function view)
+		Rows.constantsByFunction(fn, opts) -> headings: fn's constants, then every
+		                          nested function's (scope "With nested functions")
+		Rows.upvaluesWithNested(fn) -> headings: fn's upvalues, then those of the
+		                          running copies of its nested functions
+		Rows.upvaluesOfFunctions(list) -> headings: a script's running functions
+		A heading's Chain: base/access steps from fn to its function.
 		Rows.plain(kind, source)  -> the plain value the Table view writes
 		Rows.tree(roots, expanded)   -> visible rows, children of expanded nodes
 		Rows.flat(roots, opts)       -> every row down to opts.Depth (List view)
@@ -29,6 +33,7 @@ local Rows = {}
 Rows.MaxEntries = 500 -- entries shown when a table opens (the rest: a "more" row)
 Rows.MaxRows = 3000 -- rows the List view builds at most
 Rows.ListDepth = 3 -- how deep the List view opens things
+Rows.MaxHeadings = 200 -- function headings a scope lists at most
 
 local KEY_ORDER = { number = 1, string = 2, boolean = 3 }
 
@@ -302,7 +307,7 @@ function Rows.entries(t: any): ({ any }, string?)
 end
 
 ----------------------------------------------------------------------
--- Function view: rows grouped under the function that owns them
+-- Scope "With nested functions": rows under the function that owns them
 ----------------------------------------------------------------------
 
 local function functionTitle(fn: any, path: string): string
@@ -315,6 +320,14 @@ local function functionTitle(fn: any, path: string): string
 		name = Inspect.functionName(fn)
 	end
 	return (name or "(anonymous)") .. "   " .. path
+end
+
+-- Puts rows under a heading: ids and paths start with the heading's.
+local function prefix(rows: { any }, id: string, path: string)
+	for _, node in rows do
+		node.Id = id .. "/" .. node.Id
+		node.Path = path .. " · " .. node.Path
+	end
 end
 
 local function heading(id: string, fn: any, path: string, children: { any }, why: string?)
@@ -347,97 +360,92 @@ function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 		return {}, "a C function has no constants"
 	end
 	local out = {}
-	local function add(target, id: string, path: string, seen)
-		local rows = Rows.constants(target, opts)
-		for _, node in rows do
-			node.Id = id .. "/" .. node.Id
-			node.Path = path .. " · " .. node.Path
+	local function add(target, id: string, path: string, chain, seen)
+		if #out >= Rows.MaxHeadings then
+			return
 		end
-		table.insert(out, heading(id, target, path, rows))
+		local rows = Rows.constants(target, opts)
+		prefix(rows, id, path)
+		local node = heading(id, target, path, rows)
+		node.Chain = chain
+		table.insert(out, node)
 		local ok, protos = call("debug.getprotos", target)
 		if ok and type(protos) == "table" then
 			for index, proto in protos do
 				if not seen[proto] then
 					local mine = table.clone(seen)
 					mine[proto] = true
-					add(proto, id .. "." .. index, (if path == "main" then "" else path .. ".") .. index, mine)
+					local nextChain = table.clone(chain)
+					table.insert(nextChain, { Kind = "proto", Index = index })
+					add(proto, id .. "." .. index, (if path == "main" then "" else path .. ".") .. index, nextChain, mine)
 				end
 			end
 		end
 	end
-	add(fn, "f", "main", { [fn] = true })
+	add(fn, "f", "main", {}, { [fn] = true })
 	return out, nil
 end
 
--- Upvalues: the function's own, then those of every function it holds as
--- an upvalue (three levels at most).
-function Rows.upvaluesByFunction(fn: any): ({ any }, string?)
+-- Upvalues of a function and of the running copies of its nested
+-- functions (debug.getproto(f, i, true): the live closures of a nested
+-- function, which have real upvalues), each under a heading. Nested
+-- functions of nested functions are followed too (six levels at most).
+-- A heading's Chain is how its function is reached from fn (base/access
+-- steps), so its path can be shown and copied.
+function Rows.upvaluesWithNested(fn: any): ({ any }, string?)
 	if fn == nil then
 		return {}, "nothing to look into"
 	end
-	if Inspect.isC(fn) then
+	if typeof(fn) ~= "ProtoProxy" and Inspect.isC(fn) then
 		return {}, "a C function's upvalues can't be read"
 	end
 	local out = {}
-	local seen = {}
-	local function add(target, id: string, path: string, level: number)
-		if seen[target] or level > 3 then
+	if typeof(fn) ~= "ProtoProxy" then
+		local own = Rows.upvalues(fn)
+		prefix(own, "f", "main")
+		local first = heading("f", fn, "main", own)
+		first.Chain = {}
+		table.insert(out, first)
+	end
+	local seen = { [fn] = true }
+	local function walk(owner, id: string, path: string, chain, depth: number)
+		local ok, protos = call("debug.getprotos", owner)
+		if not ok or type(protos) ~= "table" then
 			return
 		end
-		seen[target] = true
-		local rows = Rows.upvalues(target)
-		for _, node in rows do
-			node.Id = id .. "/" .. node.Id
-			node.Path = path .. " · " .. node.Path
-		end
-		table.insert(out, heading(id, target, path, rows))
-		for _, node in rows do
-			if node.Type == "function" and not Inspect.isC(node.Value) then
-				add(node.Value, id .. "/" .. tostring(node.Index), path .. "↑" .. tostring(node.Index), level + 1)
+		for index, proto in protos do
+			if #out >= Rows.MaxHeadings then
+				return
 			end
-		end
-	end
-	add(fn, "f", "main", 1)
-	return out, nil
-end
-
--- Contents: every Luau function in the table (and tables inside it, three
--- levels), each with its upvalues.
-function Rows.contentsByFunction(t: any): ({ any }, string?)
-	if type(t) ~= "table" then
-		return {}, "not a table"
-	end
-	local out = {}
-	local seenTables, seenFns = {}, {}
-	local function walk(tbl, path: string, level: number)
-		if seenTables[tbl] or level > 3 then
-			return
-		end
-		seenTables[tbl] = true
-		local keys = {}
-		for key in next, tbl do
-			table.insert(keys, key)
-		end
-		sortKeys(keys)
-		for _, key in keys do
-			local value = rawget(tbl, key)
-			local here = joinPath(path, key)
-			if type(value) == "function" and not Inspect.isC(value) and not seenFns[value] then
-				seenFns[value] = true
-				local rows = Rows.upvalues(value)
-				for _, node in rows do
-					node.Id = "e:" .. here .. "/" .. node.Id
-					node.Path = here .. " · " .. node.Path
+			local here = if path == "main" then tostring(index) else path .. "." .. index
+			local okCopies, copies = call("debug.getproto", owner, index, true)
+			if okCopies and type(copies) == "table" then
+				for copyIndex, copy in copies do
+					if type(copy) == "function" and not seen[copy] and #out < Rows.MaxHeadings then
+						seen[copy] = true
+						local rowId = ("%s.%dr%d"):format(id, index, copyIndex)
+						local title = ("nested %s · running %d"):format(here, copyIndex)
+						local rows = Rows.upvalues(copy)
+						prefix(rows, rowId, title)
+						local node = heading(rowId, copy, title, rows)
+						local myChain = table.clone(chain)
+						table.insert(myChain, { Kind = "closure", Index = index, Copy = copyIndex })
+						node.Chain = myChain
+						table.insert(out, node)
+					end
 				end
-				table.insert(out, heading("e:" .. here, value, here, rows))
-			elseif type(value) == "table" then
-				walk(value, here, level + 1)
+			end
+			if depth < 6 and not seen[proto] then
+				seen[proto] = true
+				local protoChain = table.clone(chain)
+				table.insert(protoChain, { Kind = "proto", Index = index })
+				walk(proto, id .. "." .. index, here, protoChain, depth + 1)
 			end
 		end
 	end
-	walk(t, "", 1)
+	walk(fn, "f", "main", {}, 1)
 	if #out == 0 then
-		return {}, "no Luau functions in this table"
+		return {}, "it has no running copies of nested functions"
 	end
 	return out, nil
 end
@@ -645,8 +653,8 @@ end
 Rows.childrenOf = childrenOf
 
 -- Tree view: roots, and the children of every expanded node (by Id).
--- expanded may be a function(node) -> boolean (the Function view opens
--- its headings unless you closed them).
+-- expanded may be a function(node) -> boolean (function headings start
+-- open unless you closed them).
 function Rows.tree(roots: { any }, expanded: any): { any }
 	local out = {}
 	local isOpen = if type(expanded) == "function" then expanded else function(node)
