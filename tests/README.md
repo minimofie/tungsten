@@ -28,6 +28,24 @@ Files
                     (require / getsenv paths, found, typed, /load, Copy),
                     the script viewer passing paths on
 - test_pathback.luau  the path bar's back button (base/loaded history)
+- test_pathreload.luau the path bar's reload button (Loaded.reload: values
+                    inside scripts read again, not remembered for back),
+                    typed $variables, paths to nested functions
+                    (debug.getproto(f, n) and (f, n, true)[k]): code,
+                    crumbs, resolve, parse, the path bar and /load
+- test_svviews.luau Script Viewer revamp: the scrolling work area (list at
+                    least View.ListMin), References toggle, view switches
+                    deferred and guarded (newer wins, failure says why),
+                    List search and type filter, the Table text cap
+- test_svinspect.luau Script Viewer: Inspect (replaces Look into it) and
+                    Copy path only with a real path (code reaching it)
+- test_svfunctions.luau Script Viewer: the Functions sub-tab and its details
+                    pane, nested functions as subjects (constants through
+                    the proxy, running copies' upvalues), running copies,
+                    a script's running functions and bytecode
+- test_svforms.luau Script Viewer: the value field (only the types that
+                    fit, a variable picker), values from variables,
+                    suggested variable names
 - test_loader.luau  the web loader (loader.luau): release.txt is current with
                     Tungsten/; fresh install, nothing new, update (changed,
                     same-size, dropped, added, hand-edited files), a failed
@@ -84,8 +102,9 @@ Files
 - test_p1c.luau     part 1.3: Source (decompiled when looked at, in a thread,
                     once per script, stale results dropped, Copy) and Table
                     (loaded tables, what required modules return; now Contents)
-- test_p1d.luau     part 1.4: views Table (rows as a Luau table, KEEP for
-                    what can't be written) and Function (rows by function);
+- test_p1d.luau     part 1.4 (revamped): views Tree / List / Table (rows as
+                    a Luau table, KEEP for what can't be written), the scope
+                    With nested functions (it replaced the Function view);
                     the Table sub-tab renamed Contents
 - test_p1e.luau     part 1.5: references of constants and upvalues (filtergc,
                     re-checked, threaded, capped at 200, opening one)
@@ -110,6 +129,11 @@ Files
   (H.SETCONSTANT_FAIL refuses); setreadonly / isreadonly use H.READONLY.
   getgc returns H.GC; debug.info(fn, "s") returns H.FN[fn].Source when set;
   H.FILTERGC_ENV_MISS / H.FILTERGC_SOURCE_MISS make those filtergc options find nothing.
+  Protos are tables { Info, Constants, Protos, Closures, Line, Source, CodeHash };
+  handed out by getprotos / getproto they become ProtoProxy (typeof, via
+  H.proto). debug.getproto(f, i, activated) returns the proto or a copy of
+  its Closures (H.GETPROTO_CALLS counts); debug.info on a proto reads
+  Source / Line / Info.name / Info.numparams.
 - test_p0b.luau     Plugins stage P0b: sub-tabs in Tungsten's style (pills,
                     open / hover / badge looks, sideways scrolling, scales)
 - fixtures/plugins/ test plugins (copied into Tungsten/plugins by the Stage 5

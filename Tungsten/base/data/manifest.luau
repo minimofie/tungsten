@@ -256,7 +256,7 @@ return {
 	["documentation/topics/07_menus.md"] = 6785,
 	["documentation/topics/08_ui.md"] = 16218,
 	["documentation/topics/09_plugins.md"] = 18349,
-	["plugins/ScriptViewer/lib/actions.luau"] = 25458,
+	["plugins/ScriptViewer/lib/actions.luau"] = 30822,
 	["plugins/ScriptViewer/lib/details.luau"] = 6750,
 	["plugins/ScriptViewer/lib/edit.luau"] = 18657,
 	["plugins/ScriptViewer/lib/inspect.luau"] = 17939,

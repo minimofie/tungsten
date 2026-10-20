@@ -14,6 +14,11 @@
 		Actions.pathOf(view, node) -> code | nil   -- the row's path, when it has one
 		Actions.applyText(view, panelId)   -- the Table view's Apply
 		Actions.parseValue(api, typeName, text) -> ok, value | why
+		Actions.typesFor(kind, value, anyType) -> the types a form offers
+		Actions.readField(api, field) -> ok, value | why  (the value field)
+	The forms' value field ("scriptviewer_value") is a Type dropdown with
+	only the types that fit, and a value box that becomes a variable picker
+	for the type "variable".
 
 	A read-only table is made writable only after you say so, and is made
 	read-only again straight after the write (Q10).
@@ -26,10 +31,38 @@ local Serialize = P.import("lib/serialize")
 
 local Actions = {}
 
--- Types the forms offer for a value.
-Actions.Types = { "string", "number", "boolean", "nil", "table", "Vector3", "Vector2", "Color3", "CFrame", "UDim2", "UDim", "BrickColor", "EnumItem", "Instance", "function" }
+-- Types a new entry may take ("variable": a $variable's value).
+Actions.NewEntryTypes = { "string", "number", "boolean", "table", "Instance", "Vector3", "CFrame", "Color3", "UDim2", "EnumItem", "function", "variable" }
 local CONSTANT_TYPES = { "string", "number", "boolean" }
 local KEY_TYPES = { "string", "number", "boolean" }
+local PLAIN = { string = true, number = true, boolean = true, ["nil"] = true }
+
+-- The types the Change value form offers for a row: only those that fit.
+--   a constant: its own type (or string, number, boolean and a vector it
+--     already is, with "Constants may change type" on)
+--   a string / number / boolean / nil: those four
+--   a table, function, Instance or datatype: that type or nil
+-- and always "variable" (a $variable's value).
+function Actions.typesFor(kind: string, value: any, anyType: boolean?): { string }
+	local current = typeof(value)
+	local out
+	if kind == "constant" then
+		if anyType then
+			out = table.clone(CONSTANT_TYPES)
+			if current == "vector" then
+				table.insert(out, "vector")
+			end
+		else
+			out = { if value == nil then "string" else current }
+		end
+	elseif PLAIN[current] then
+		out = { "string", "number", "boolean", "nil" }
+	else
+		out = { current, "nil" }
+	end
+	table.insert(out, "variable")
+	return out
+end
 
 -- The text a value starts as in a form.
 function Actions.valueText(value: any): string
@@ -84,6 +117,131 @@ function Actions.parseValue(api, typeName: string, text: string): (boolean, any)
 		return api.types.parse(trimmed, "function")
 	end
 	return api.types.parse(trimmed, typeName)
+end
+
+-- A form's value field (kind "scriptviewer_value") read back:
+-- { Type, Text, Variable } -> ok, value | why
+function Actions.readField(api, field: any): (boolean, any)
+	if type(field) ~= "table" then
+		return false, "no value"
+	end
+	if field.Type == "variable" then
+		local name = field.Variable
+		if type(name) ~= "string" or name == "" then
+			return false, "pick a variable"
+		end
+		local value, exists = api.variables.get(name)
+		if not exists then
+			return false, ("$%s doesn't exist"):format(name)
+		end
+		return true, value
+	end
+	return Actions.parseValue(api, field.Type, field.Text)
+end
+
+-- Variables whose values fit the types (all of them for "any").
+local function variableOptions(api, types: { string }): { any }
+	local wanted = {}
+	for _, name in types do
+		wanted[name] = true
+	end
+	local out = {}
+	for _, name in api.variables.names() do
+		local value = api.variables.get(name)
+		local kind = typeof(value)
+		if wanted.any or wanted[kind] then
+			table.insert(out, { Value = name, Text = "$" .. name, Hint = kind })
+		end
+	end
+	if #out == 0 then
+		table.insert(out, { Value = false, Text = "no variables of these types", Disabled = true })
+	end
+	return out
+end
+Actions.variableOptions = variableOptions
+
+-- The form field: a Type dropdown and a value box, which becomes a
+-- variable picker when the type is "variable". Field options: Types,
+-- DefaultType, Default (text), Variables (types the picker lists; default
+-- the field's Types).
+function Actions.defineFieldKind(api)
+	api.prompt.registerFieldKind("scriptviewer_value", {
+		Height = 26,
+		Build = function(holder, field, form)
+			local types = field.Types or { "string" }
+			local valueTypes = {}
+			for _, name in field.Variables or types do
+				if name ~= "variable" and name ~= "nil" then
+					table.insert(valueTypes, name)
+				end
+			end
+			local typeBox = api.ui.new("Dropdown", {
+				Parent = holder,
+				Name = "Type",
+				Options = types,
+				Value = if table.find(types, field.DefaultType) then field.DefaultType else types[1],
+				Size = UDim2.new(0, 104, 1, 0),
+			})
+			local textBox = api.ui.new("Input", {
+				Parent = holder,
+				Name = "Text",
+				Text = if field.Default ~= nil then tostring(field.Default) else "",
+				Position = UDim2.fromOffset(110, 0),
+				Size = UDim2.new(1, -110, 1, 0),
+			})
+			local varBox = api.ui.new("Dropdown", {
+				Parent = holder,
+				Name = "Variable",
+				Options = variableOptions(api, valueTypes),
+				Placeholder = "Pick a variable",
+				Searchable = true,
+				Position = UDim2.fromOffset(110, 0),
+				Size = UDim2.new(1, -110, 1, 0),
+			})
+			local function show()
+				local kind = typeBox:GetValue()
+				local isVariable = kind == "variable"
+				textBox.Instance.Visible = not isVariable
+				varBox.Instance.Visible = isVariable
+				if textBox.Box then
+					textBox.Box.PlaceholderText = if kind == "nil" then "nil (nothing to type)" else api.types.hint(kind)
+				end
+			end
+			form.Bin:Add(typeBox.Changed:Connect(show))
+			form.Bin:Add(typeBox)
+			form.Bin:Add(textBox)
+			form.Bin:Add(varBox)
+			show()
+			return {
+				Get = function()
+					local name = varBox:GetValue()
+					return { Type = typeBox:GetValue(), Text = textBox:GetText(), Variable = if type(name) == "string" then name else nil }
+				end,
+				Set = function(value)
+					if type(value) ~= "table" then
+						return
+					end
+					if value.Type then
+						typeBox:SetValue(value.Type)
+					end
+					if value.Text ~= nil then
+						textBox:SetText(tostring(value.Text))
+					end
+					if value.Variable ~= nil then
+						varBox:SetValue(value.Variable)
+					end
+					show()
+				end,
+				Focus = function()
+					textBox:Focus()
+				end,
+				Control = typeBox,
+				TypeBox = typeBox,
+				TextBox = textBox,
+				VariableBox = varBox,
+			}
+		end,
+	})
 end
 
 local function describe(node): string
@@ -151,17 +309,7 @@ function Actions.editValue(view, panelId: string, node)
 		return
 	end
 	local currentType = typeof(node.Value)
-	local options
-	if kind == "constant" and api.settings.get("constantAnyType") ~= true then
-		options = { if node.Value == nil then "string" else currentType }
-	elseif kind == "constant" then
-		options = CONSTANT_TYPES
-	else
-		options = table.clone(Actions.Types)
-		if not table.find(options, currentType) then
-			table.insert(options, 1, currentType)
-		end
-	end
+	local options = Actions.typesFor(kind, node.Value, api.settings.get("constantAnyType") == true)
 	local defaultType = if table.find(options, currentType) then currentType else options[1]
 	return api.prompt.form({
 		Title = ("Change %s"):format(describe(node)),
@@ -169,11 +317,13 @@ function Actions.editValue(view, panelId: string, node)
 			elseif kind == "constant" then "Constants are changed in the function's bytecode for this session. Changing a constant used in several places changes it everywhere."
 			else "Changed in the game's memory for this session (nothing replicates).",
 		Fields = {
-			{ Key = "type", Label = "Type", Kind = "dropdown", Options = options, Default = defaultType },
-			{ Key = "value", Label = "Value", Kind = "text", Default = Actions.valueText(node.Value) },
+			-- the picker: any variable for an upvalue or entry (a variable is how
+			-- one changes type), only constant-shaped ones for a constant
+			{ Key = "value", Label = "Value", Kind = "scriptviewer_value", Types = options, DefaultType = defaultType, Default = Actions.valueText(node.Value),
+				Variables = if kind == "constant" then { "string", "number", "boolean", "vector" } else { "any" } },
 		},
 		OnSubmit = function(values)
-			local okParse, value = Actions.parseValue(api, values.type, values.value)
+			local okParse, value = Actions.readField(api, values.value)
 			if not okParse then
 				return false, tostring(value)
 			end
@@ -225,15 +375,14 @@ function Actions.addEntry(view, panelId: string, t: any, label: string?)
 		Fields = {
 			{ Key = "keyType", Label = "Key type", Kind = "dropdown", Options = KEY_TYPES, Default = "string" },
 			{ Key = "key", Label = "Key", Kind = "text", Default = "" },
-			{ Key = "type", Label = "Value type", Kind = "dropdown", Options = Actions.Types, Default = "string" },
-			{ Key = "value", Label = "Value", Kind = "text", Default = "" },
+			{ Key = "value", Label = "Value", Kind = "scriptviewer_value", Types = Actions.NewEntryTypes, DefaultType = "string", Default = "", Variables = { "any" } },
 		},
 		OnSubmit = function(values)
 			local okKey, key = parseKey(api, values.keyType, values.key)
 			if not okKey then
 				return false, tostring(key)
 			end
-			local okValue, value = Actions.parseValue(api, values.type, values.value)
+			local okValue, value = Actions.readField(api, values.value)
 			if not okValue then
 				return false, tostring(value)
 			end
@@ -278,12 +427,22 @@ function Actions.renameKey(view, panelId: string, node)
 	})
 end
 
+-- A variable name from a row's key ("max speed" -> "max_speed").
+function Actions.suggestName(node): string
+	local key = if type(node) == "table" then tostring(node.RawKey or node.Key or "") else ""
+	key = key:gsub("^%s+", ""):gsub("%s+.*$", ""):gsub("[^%w_]", "_")
+	if key == "" or key:match("^%d") then
+		key = "value" .. (if key ~= "" then "_" .. key else "")
+	end
+	return key:sub(1, 40)
+end
+
 function Actions.setVariable(view, node)
 	local api = view.Api
 	return api.prompt.input({
 		Title = "Keep it in a variable",
 		Text = ("$name will hold %s"):format(describe(node)),
-		Default = "value",
+		Default = Actions.suggestName(node),
 		Placeholder = "name (letters, digits, _)",
 		OnSubmit = function(name)
 			name = tostring(name or ""):gsub("^%$", "")
@@ -624,6 +783,7 @@ function Actions.define(api, getView)
 	local function view(ctx)
 		return ctx.View or getView()
 	end
+	Actions.defineFieldKind(api)
 	api.menus.define("scriptviewer.row", {
 		Title = "Script Viewer row",
 		Header = function(ctx)

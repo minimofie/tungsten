@@ -101,10 +101,10 @@ lastPrompt = nil
 pick(menu, "Change value…").Callback()
 H.advance(0.1)
 form = lastPrompt
-check("Change value… opens a form with Type and Value", form ~= nil and form.Fields and form.Fields.type ~= nil and form.Fields.value ~= nil)
-check("…Value starts as the constant", form.Fields.value.Get() == "Touched", form.Fields.value.Get())
-check("…the Type dropdown keeps the constant's type (setting off)", form.Fields.type.Get() == "string" and #form.Fields.type.Field.Options == 1)
-form.Fields.value.Set("Hit")
+check("Change value… opens a form with one Value field (Type + value)", form ~= nil and form.Fields and form.Fields.value ~= nil and form.Fields.value.TypeBox ~= nil and form.Fields.type == nil)
+check("…Value starts as the constant", form.Fields.value.Get().Text == "Touched", form.Fields.value.Get().Text)
+check("…the Type dropdown keeps the constant's type, or a variable (setting off)", form.Fields.value.Get().Type == "string" and table.concat(form.Fields.value.Field.Types, ",") == "string,variable", table.concat(form.Fields.value.Field.Types, ","))
+form.Fields.value.Set({ Text = "Hit" })
 form.Submit()
 H.advance(0.2)
 check("the constant changed in the function", H.FN[onTouched].Constants[1] == "Hit", H.FN[onTouched].Constants[1])
@@ -123,12 +123,12 @@ lastPrompt = nil
 constants.List._onActivate(five)
 H.advance(0.1)
 form = lastPrompt
-check("double-click on a constant opens the form", form ~= nil and form.Fields and form.Fields.value.Get() == "5", form and form.Fields and form.Fields.value.Get())
-form.Fields.value.Set("not a number")
+check("double-click on a constant opens the form", form ~= nil and form.Fields and form.Fields.value.Get().Text == "5", form and form.Fields and form.Fields.value.Get().Text)
+form.Fields.value.Set({ Text = "not a number" })
 form.Submit()
 H.advance(0.1)
 check("bad text: the form stays open and says why", not form.Closed and form.Problem.Text ~= "", form.Problem and form.Problem.Text)
-form.Fields.value.Set("7.5")
+form.Fields.value.Set({ Text = "7.5" })
 form.Submit()
 H.advance(0.2)
 check("…fixed text writes it", H.FN[onTouched].Constants[2] == 7.5 and form.Closed)
@@ -140,9 +140,9 @@ lastPrompt = nil
 pick(menuFor("constants", humanoid), "Change value…").Callback({ Item = humanoid, Panel = "constants", View = view })
 H.advance(0.1)
 form = lastPrompt
-check("setting on: Type offers string, number, boolean", table.concat(form.Fields.type.Field.Options, ",") == "string,number,boolean", table.concat(form.Fields.type.Field.Options, ","))
-form.Fields.type.Set("boolean")
-form.Fields.value.Set("true")
+check("setting on: Type offers string, number, boolean and variable", table.concat(form.Fields.value.Field.Types, ",") == "string,number,boolean,variable", table.concat(form.Fields.value.Field.Types, ","))
+form.Fields.value.Set({ Type = "boolean" })
+form.Fields.value.Set({ Text = "true" })
 form.Submit()
 H.advance(0.2)
 check("…a constant can change type", H.FN[onTouched].Constants[4] == true, H.FN[onTouched].Constants[4])
@@ -153,7 +153,7 @@ lastPrompt = nil
 pick(menuFor("constants", humanoid), "Change value…").Callback({ Item = humanoid, Panel = "constants", View = view })
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("false")
+form.Fields.value.Set({ Text = "false" })
 form.Submit()
 H.advance(0.1)
 check("a refused setconstant keeps the form open", not form.Closed and H.FN[onTouched].Constants[4] == true, form.Problem and form.Problem.Text)
@@ -172,9 +172,9 @@ lastPrompt = nil
 pick(menuFor("upvalues", ten), "Change value…").Callback({ Item = ten, Panel = "upvalues", View = view })
 H.advance(0.1)
 form = lastPrompt
-check("upvalue form offers every type", table.find(form.Fields.type.Field.Options, "Vector3") ~= nil and table.find(form.Fields.type.Field.Options, "function") ~= nil)
-form.Fields.type.Set("string")
-form.Fields.value.Set("ten")
+check("a number upvalue's form offers only the plain types and variable", table.concat(form.Fields.value.Field.Types, ",") == "string,number,boolean,nil,variable", table.concat(form.Fields.value.Field.Types, ","))
+form.Fields.value.Set({ Type = "string" })
+form.Fields.value.Set({ Text = "ten" })
 form.Submit()
 H.advance(0.2)
 check("an upvalue can change type", H.FN[onTouched].Upvalues[1] == "ten", H.FN[onTouched].Upvalues[1])
@@ -183,11 +183,12 @@ ten = rowWhere(upvalues, function(n) return n.Value == "ten" end)
 pick(menuFor("upvalues", ten), "Change value…").Callback({ Item = ten, Panel = "upvalues", View = view })
 H.advance(0.1)
 form = lastPrompt
-form.Fields.type.Set("Vector3")
-form.Fields.value.Set("1, 2, 3")
+check("…a string upvalue offers no Vector3 (only through a variable)", table.find(form.Fields.value.Field.Types, "Vector3") == nil)
+T.Variables.set("vec", E_.Vector3.new(1, 2, 3))
+form.Fields.value.Set({ Type = "variable", Variable = "vec" })
 form.Submit()
 H.advance(0.2)
-check("…to a Vector3 from text", H.FN[onTouched].Upvalues[1] == E_.Vector3.new(1, 2, 3), H.FN[onTouched].Upvalues[1])
+check("…to a Vector3 from a variable", H.FN[onTouched].Upvalues[1] == E_.Vector3.new(1, 2, 3), H.FN[onTouched].Upvalues[1])
 local vec = rowWhere(upvalues, function(n) return n.Value == E_.Vector3.new(1, 2, 3) end)
 pick(menuFor("upvalues", vec), "Set to nil").Callback({ Item = vec, Panel = "upvalues", View = view })
 H.advance(0.2)
@@ -202,15 +203,23 @@ lastPrompt = nil
 pick(menuFor("upvalues", vec), "Change value…").Callback({ Item = rowWhere(upvalues, function(n) return n.Value == E_.Vector3.new(1, 2, 3) end), Panel = "upvalues", View = view })
 H.advance(0.1)
 form = lastPrompt
-form.Fields.type.Set("function")
-form.Fields.value.Set("print")
+check("a Vector3 upvalue offers Vector3, nil and variable", table.concat(form.Fields.value.Field.Types, ",") == "Vector3,nil,variable", table.concat(form.Fields.value.Field.Types, ","))
+form.Fields.value.Set({ Type = "variable" })
 form.Submit()
 H.advance(0.1)
-check("a function needs a $variable (no code from text)", not form.Closed)
-form.Fields.value.Set("$fn")
+check("variable with none picked: the form stays open", not form.Closed and form.Problem.Text:find("pick a variable", 1, true) ~= nil, form.Problem and form.Problem.Text)
+check("…the picker lists the variables", (function()
+	for _, option in form.Fields.value.VariableBox.Options do
+		if option.Value == "fn" then
+			return option.Text == "$fn" and option.Hint == "function"
+		end
+	end
+	return false
+end)())
+form.Fields.value.Set({ Variable = "fn" })
 form.Submit()
 H.advance(0.2)
-check("…$fn sets it", H.FN[onTouched].Upvalues[1] == helper)
+check("…$fn picked sets it", H.FN[onTouched].Upvalues[1] == helper)
 
 ----------------------------------------------------------------------
 -- 3. table entries inside an upvalue (Tree)
@@ -222,10 +231,9 @@ lastPrompt = nil
 pick(menuFor("upvalues", tbl), "Add entry to " .. tostring(tbl.Path or tbl.Key) .. "…").Callback({ Item = tbl, Panel = "upvalues", View = view })
 H.advance(0.1)
 form = lastPrompt
-check("Add entry form: key type, key, value type, value", form and form.Fields.keyType and form.Fields.key and form.Fields.type and form.Fields.value)
+check("Add entry form: key type, key, value (type + value)", form and form.Fields.keyType and form.Fields.key and form.Fields.value and table.find(form.Fields.value.Field.Types, "variable") ~= nil)
 form.Fields.key.Set("jump")
-form.Fields.type.Set("number")
-form.Fields.value.Set("50")
+form.Fields.value.Set({ Type = "number", Text = "50" })
 form.Submit()
 H.advance(0.2)
 local upTable = H.FN[onTouched].Upvalues[2]
@@ -261,7 +269,7 @@ lastPrompt = nil
 pick(menuFor("contents", speedRow), "Change value…").Callback({ Item = speedRow, Panel = "contents", View = view })
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("20")
+form.Fields.value.Set({ Text = "20" })
 lastPrompt = nil
 form.Submit()
 H.advance(0.1)
@@ -274,7 +282,7 @@ lastPrompt = nil
 pick(menuFor("contents", speedRow), "Change value…").Callback({ Item = speedRow, Panel = "contents", View = view })
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("20")
+form.Fields.value.Set({ Text = "20" })
 lastPrompt = nil
 form.Submit()
 H.advance(0.1)
@@ -300,8 +308,8 @@ form = lastPrompt
 check("…it opens the Add form", form ~= nil and form.Fields and form.Fields.key ~= nil)
 form.Fields.keyType.Set("number")
 form.Fields.key.Set("1")
-form.Fields.type.Set("boolean")
-form.Fields.value.Set("true")
+form.Fields.value.Set({ Type = "boolean" })
+form.Fields.value.Set({ Text = "true" })
 form.Submit()
 H.advance(0.2)
 check("…a number key", config[1] == true)
@@ -310,7 +318,7 @@ H.clickObject(contents.Add.Instance)
 H.advance(0.1)
 form = lastPrompt
 form.Fields.key.Set("Empty")
-form.Fields.type.Set("nil")
+form.Fields.value.Set({ Type = "nil" })
 form.Submit()
 H.advance(0.1)
 check("a new entry needs a value", not form.Closed and config.Empty == nil)
@@ -418,7 +426,7 @@ lastPrompt = nil
 pick(menuFor("constants", openRow), "Change value…").Callback()
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("shut")
+form.Fields.value.Set({ Text = "shut" })
 form.Submit()
 H.advance(0.2)
 check("…written to the running main function", H.FN[liveMain].Constants[1] == "shut", H.FN[liveMain].Constants[1])
@@ -445,7 +453,7 @@ lastPrompt = nil
 pick(menuFor("constants", openRow), "Change value…").Callback()
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("shut")
+form.Fields.value.Set({ Text = "shut" })
 form.Submit()
 H.advance(0.1)
 check("no running copy: refused, the form says why", not form.Closed and form.Problem.Text:find("change nothing", 1, true) ~= nil and H.FN[copyMain].Constants[1] == "open", form.Problem and form.Problem.Text)
@@ -507,7 +515,7 @@ lastPrompt = nil
 pick(menuFor("upvalues", idle), "Change value…").Callback()
 H.advance(0.1)
 form = lastPrompt
-form.Fields.value.Set("busy")
+form.Fields.value.Set({ Text = "busy" })
 form.Submit()
 H.advance(0.2)
 check("…its upvalue can be changed", H.FN[liveLoop].Upvalues[2] == "busy", H.FN[liveLoop].Upvalues[2])
