@@ -111,6 +111,7 @@ local function tableChildren(node, t: { [any]: any }, ancestors)
 		child.Parent = t -- the table it is in, and its key (editing)
 		child.RawKey = key
 		child.Up = node -- the row it is under (its path)
+		child.Deep = node.Deep
 		table.insert(out, child)
 	end
 	return out
@@ -137,12 +138,18 @@ local function functionChildren(node, fn: any, ancestors)
 		child.Index = index
 		child.Owner = fn -- the function this is an upvalue of (references)
 		child.Up = node
+		child.Deep = node.Deep
 		table.insert(out, child)
 	end
 	return out
 end
 
+local deepFunctionChildren
+
 -- One value as a node. ancestors: the tables / functions above it (cycles).
+-- A node with Deep set (the Contents sub-tab's Deep view) opens a function
+-- into its constants, upvalues and nested functions instead of only its
+-- upvalues.
 function valueNode(id: string, key: string, path: string, value: any, depth: number, ancestors, kind: string)
 	local valueType = typeof(value)
 	local node = {
@@ -166,6 +173,8 @@ function valueNode(id: string, key: string, path: string, value: any, depth: num
 			node.Children = function()
 				if valueType == "table" then
 					return tableChildren(node, value, mine)
+				elseif node.Deep then
+					return deepFunctionChildren(node, value, mine, false)
 				end
 				return functionChildren(node, value, mine)
 			end
@@ -375,6 +384,24 @@ function Rows.functionsOf(subject): ({ any }, string?)
 	if subject == nil or subject.Kind == "none" then
 		return {}, "nothing loaded"
 	end
+	if subject.Kind == "table" then
+		-- the functions inside the table, by key path
+		local out = {}
+		for index, entry in Rows.functionsInTable(subject.Table) do
+			local node = liveNode(entry.Fn, "f" .. index, 0)
+			node.Key, node.Path = entry.Path, entry.Path
+			local chain = {}
+			for _, key in entry.Keys do
+				table.insert(chain, { Kind = "key", Key = key })
+			end
+			node.Chain, node.ChainFrom = chain, "table"
+			table.insert(out, node)
+		end
+		if #out == 0 then
+			return {}, "no Luau functions in this table"
+		end
+		return out, nil
+	end
 	if subject.Kind == "script" or subject.Kind == "module" then
 		local running = {}
 		local live, why = Rows.liveFunctions(subject)
@@ -464,12 +491,78 @@ end
 
 
 -- A table's entries as root rows (the Table sub-tab).
-function Rows.entries(t: any): ({ any }, string?)
+-- opts.Deep: the Deep view (functions open into constants, upvalues and
+-- nested functions).
+function Rows.entries(t: any, opts: { [string]: any }?): ({ any }, string?)
 	if type(t) ~= "table" then
 		return {}, "not a table"
 	end
-	local top = { Id = "t", Path = "", Depth = -1 }
+	local top = { Id = if opts and opts.Deep then "d" else "t", Path = "", Depth = -1, Deep = opts ~= nil and opts.Deep == true }
 	return tableChildren(top, t, { [t] = true }), nil
+end
+
+-- The Deep view's groups under a function (or a nested function, isProto):
+-- Constants (editable), Upvalues (editable; not for a prototype, which
+-- has none) and Nested functions (each opening the same way). Empty
+-- groups are left out.
+function deepFunctionChildren(node, fn: any, ancestors, isProto: boolean)
+	local out = {}
+	local function group(suffix: string, noun: string, build)
+		local g = { Id = node.Id .. "/" .. suffix, Key = noun, Path = node.Path, Type = "", Depth = node.Depth + 1, Kind = "group", Deep = true, Up = node }
+		local ok, list = pcall(build, g)
+		list = if ok and type(list) == "table" then list else {}
+		if #list == 0 then
+			return
+		end
+		g.Count = #list
+		g.Summary = ("%d %s"):format(#list, noun:lower())
+		g.Expandable = true
+		g.Children = function()
+			return list
+		end
+		table.insert(out, g)
+	end
+	group("c", "Constants", function(g)
+		local rows = {}
+		local okConst, constants = call("debug.getconstants", fn)
+		if okConst and type(constants) == "table" then
+			local highest = 0
+			for index in next, constants do
+				if type(index) == "number" and index > highest then
+					highest = index
+				end
+			end
+			for index = 1, highest do
+				local value = constants[index]
+				if value ~= nil then
+					local row = valueNode(g.Id .. "/" .. index, tostring(index), node.Path .. " · constant " .. index, value, g.Depth + 1, ancestors, "constant")
+					row.Index, row.Owner = index, fn
+					table.insert(rows, row)
+				end
+			end
+		end
+		return rows
+	end)
+	if not isProto then
+		group("u", "Upvalues", function(g)
+			return functionChildren(g, fn, ancestors)
+		end)
+	end
+	group("n", "Nested functions", function(g)
+		local rows = Rows.functions(fn, { IdPrefix = g.Id .. "/p", Depth = g.Depth + 1 })
+		for _, row in rows do
+			row.Up = g
+			row.Deep = true
+			local proto = row.Value
+			row.Expandable = true
+			row._children = nil
+			row.Children = function()
+				return deepFunctionChildren(row, proto, ancestors, true)
+			end
+		end
+		return rows
+	end)
+	return out
 end
 
 ----------------------------------------------------------------------
@@ -881,9 +974,34 @@ function Rows.upvaluesOfTable(t: any): ({ any }, string?, { [any]: boolean })
 		table.insert(out, node)
 	end
 	if #out == 0 then
-		return {}, "no Luau functions in this table (nothing has upvalues)", shown
+		return {}, "no Luau functions in this table, so no upvalues (its entries are in the Contents sub-tab)", shown
 	end
 	return out, nil, shown
+end
+
+-- The constants of every Luau function in a table, a heading per function
+-- named by its key path (like Rows.upvaluesOfTable).
+function Rows.constantsOfTable(t: any, opts: { [string]: any }?): ({ any }, string?)
+	local out = {}
+	for index, entry in Rows.functionsInTable(t) do
+		local id = "t" .. index
+		local rows = Rows.constants(entry.Fn, opts)
+		local chain = {}
+		for _, key in entry.Keys do
+			table.insert(chain, { Kind = "key", Key = key })
+		end
+		prefix(rows, id, entry.Path)
+		local node = heading(id, entry.Fn, entry.Path, rows)
+		node.Chain, node.ChainFrom = chain, "table"
+		for _, row in rows do
+			row.OwnerChain, row.OwnerChainFrom = chain, "table"
+		end
+		table.insert(out, node)
+	end
+	if #out == 0 then
+		return {}, "no Luau functions in this table, so no constants (its entries are in the Contents sub-tab)"
+	end
+	return out, nil
 end
 
 ----------------------------------------------------------------------

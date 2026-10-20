@@ -51,6 +51,10 @@ Files
                     (and ModuleScript's) functions' upvalues by key path,
                     paths through rows (Up), Search all functions (text,
                     numbers, inside tables), results changed and refreshed
+- test_svdeep.luau  Script Viewer: the Contents Deep view (tables only):
+                    functions open into Constants / Upvalues / Nested
+                    functions, all changeable, with paths; a table's
+                    Constants and Functions sub-tabs by key path
 - test_loader.luau  the web loader (loader.luau): release.txt is current with
                     Tungsten/; fresh install, nothing new, update (changed,
                     same-size, dropped, added, hand-edited files), a failed

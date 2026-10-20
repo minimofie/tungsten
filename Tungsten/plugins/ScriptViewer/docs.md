@@ -12,7 +12,7 @@ Changes are made in the game's memory for this session only: nothing is written 
 | a ModuleScript | the same, and under **Contents** the table it returned (once the game has required it) |
 | a function | its constants, upvalues and nested functions |
 | a nested function | its constants (shared by every copy of it), its running copies' upvalues, its own nested functions |
-| a table | its entries under **Contents** |
+| a table | its entries under **Contents** (the **Deep** view shows everything inside its functions too); the constants, upvalues and functions of every function in it, by key path, under **Constants**, **Upvalues** and **Functions** |
 
 The line under the title says what it is (hover it for notes).
 
@@ -35,6 +35,8 @@ Each data sub-tab has a view dropdown on its toolbar (it is remembered):
 | **Tree** | explore and change things in place: rows open into tables, functions and their upvalues |
 | **List** | find things: every row flat with its full path, a **search** box (keys, paths and values) and a **type filter** (string, number, boolean, table, function, Instance, other), with an "N of M" count. For example: every number constant (tuning values), or a remote's name |
 | **Table** | bulk changes and copying: the rows as a Luau table. Edit the text and press **Apply** (only what changed is written, all or nothing), or **Revert**. Values that can't be written as text show as `KEEP` and stay as they are. Very long tables stop at 20,000 entries; the rest are `KEEP` |
+
+**Contents** also has **Deep**, for tables only: everything inside the table in one tree. Tables open into their entries; a function opens into **Constants**, **Upvalues** and **Nested functions** (each group says how many), and a nested function opens into its own constants and nested functions. Every row there can be changed, inspected and copied like anywhere else: strings, numbers and other entries, a function's constants and upvalues, the entries of a table upvalue, a nested function's constants.
 
 The work area scrolls when the window is small, so the list keeps a useful height.
 

@@ -12,6 +12,9 @@
 		        box (key, path or value text) and a type filter
 		Table   bulk changes and copying: the rows as a Luau table,
 		        editable, Apply / Revert
+		Deep    (Contents only, tables) everything inside: functions open
+		        into their constants, upvalues and nested functions, all
+		        editable
 	Constants and Upvalues also have a scope: "This function", or "With
 	nested functions" (every nested function's constants; the upvalues of
 	the running copies of nested functions), each under a heading.
@@ -57,7 +60,7 @@ View.Panels = {
 	{ Id = "constants", Title = "Constants", Icon = "type_number", Data = true, Setting = "constantsView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "constantsScope" },
 	{ Id = "upvalues", Title = "Upvalues", Icon = "variable", Data = true, Setting = "upvaluesView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "upvaluesScope", Scopes = { "This function", "With nested functions", "Search all functions" } },
 	{ Id = "functions", Title = "Functions", Icon = "type_function", Data = true, Setting = "functionsView", Modes = { "Tree", "List", "Table" } },
-	{ Id = "contents", Title = "Contents", Icon = "type_table", Data = true, Setting = "contentsView", Modes = { "Tree", "List", "Table" }, Refs = true },
+	{ Id = "contents", Title = "Contents", Icon = "type_table", Data = true, Setting = "contentsView", Modes = { "Tree", "Deep", "List", "Table" }, Refs = true },
 }
 View.Modes = { "Tree", "List", "Table" }
 View.Scopes = { "This function", "With nested functions" }
@@ -532,7 +535,7 @@ function View:_makeList(id: string)
 			if type(node) ~= "table" then
 				return
 			end
-			if panel.Mode == "Tree" and node.Expandable then
+			if (panel.Mode == "Tree" or panel.Mode == "Deep") and node.Expandable then
 				self:Toggle(id, node.Id)
 			elseif Edit.kindOf(node) and not node.Expandable then
 				-- a row that doesn't open: double-click changes it
@@ -801,7 +804,8 @@ function View:_roots(id: string): ({ any }, string?)
 	end
 	if id == "contents" then
 		if subject.Table ~= nil then
-			return Rows.entries(subject.Table)
+			-- Deep: functions open into their constants, upvalues and nested functions
+			return Rows.entries(subject.Table, { Deep = panel ~= nil and panel.Mode == "Deep" })
 		end
 		if subject.Kind == "proto" then
 			return {}, "a nested function has no contents (its constants, upvalues and nested functions are in their sub-tabs)"
@@ -853,6 +857,10 @@ function View:_roots(id: string): ({ any }, string?)
 			whyNone = if #roots > 0 then nil else whyNone
 		end
 		return roots, whyNone
+	end
+	if id == "constants" and subject.Kind == "table" then
+		-- the constants of the table's functions, by key path
+		return Rows.constantsOfTable(subject.Table, { ShowEmpty = showEmptySlots(self.Api) })
 	end
 	local fn = subject.Fn
 	if fn == nil then
@@ -1103,7 +1111,9 @@ function View:_render(id: string)
 	local display = self.Api.types.display
 	local noun = ({ functions = "function", constants = "constant", upvalues = "upvalue", contents = "entry" })[id] or "row"
 	for _, node in rows do
-		if node.Kind == "heading" then
+		if node.Kind == "group" then
+			node.ValueText = node.Summary or ""
+		elseif node.Kind == "heading" then
 			node.ValueText = if (node.Count or 0) == 0 and node.Note then ("(%s)"):format(node.Note) else ("%d %s"):format(node.Count or 0, if (node.Count or 0) == 1 then noun elseif noun == "entry" then "entries" else noun .. "s")
 		elseif id ~= "functions" then
 			local ok, text = pcall(display, node.Value)

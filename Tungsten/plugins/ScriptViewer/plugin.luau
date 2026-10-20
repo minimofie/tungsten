@@ -79,7 +79,7 @@ return {
 		{ Id = "constantsView", Kind = "choice", Text = "Constants view", Hint = "Tree: explore and change in place · List: search and filter, with paths · Table: as a Luau table, bulk changes", Options = { "Tree", "List", "Table" }, Default = "Tree" },
 		{ Id = "upvaluesView", Kind = "choice", Text = "Upvalues view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
 		{ Id = "functionsView", Kind = "choice", Text = "Functions view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
-		{ Id = "contentsView", Kind = "choice", Text = "Contents view", Options = { "Tree", "List", "Table" }, Default = "Tree" },
+		{ Id = "contentsView", Kind = "choice", Text = "Contents view", Hint = "Deep: functions in the table open into their constants, upvalues and nested functions", Options = { "Tree", "Deep", "List", "Table" }, Default = "Tree" },
 		{ Id = "constantsScope", Kind = "choice", Text = "Constants scope", Hint = "also every nested function's constants", Options = { "This function", "With nested functions" }, Default = "This function" },
 		{ Id = "upvaluesScope", Kind = "choice", Text = "Upvalues scope", Hint = "nested: also nested functions' running copies · search: every game function whose upvalues match", Options = { "This function", "With nested functions", "Search all functions" }, Default = "This function" },
 		{ Id = "showReferences", Kind = "toggle", Text = "Show references", Hint = "under the list: other functions using the selected constant or upvalue", Default = false },

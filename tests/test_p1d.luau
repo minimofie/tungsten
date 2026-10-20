@@ -83,7 +83,7 @@ local constants = open("constants")
 check("Constants offers Tree, List, Table (no Function view)", options(constants) == "Tree,List,Table", options(constants))
 check("Functions offers Tree, List, Table", options(open("functions")) == "Tree,List,Table", options(view.Panels.functions))
 local upOptions, contentOptions = options(open("upvalues")), options(open("contents"))
-check("Upvalues and Contents offer the same three", upOptions == "Tree,List,Table" and contentOptions == "Tree,List,Table", upOptions .. " / " .. contentOptions)
+check("Upvalues offers the same three; Contents also Deep (tables only)", upOptions == "Tree,List,Table" and contentOptions == "Tree,Deep,List,Table", upOptions .. " / " .. contentOptions)
 check("Constants and Upvalues have a scope; Contents and Functions don't", constants.ScopeSwitch ~= nil and view.Panels.upvalues.ScopeSwitch ~= nil and view.Panels.contents.ScopeSwitch == nil and view.Panels.functions.ScopeSwitch == nil)
 
 ----------------------------------------------------------------------

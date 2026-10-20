@@ -543,6 +543,16 @@ function Actions.accessOf(api, subject, node): any
 		end
 		return A.extend(A.prefix(base, #base.Steps - 1), { Kind = "closure", Index = last.Index, Copy = k })
 	end
+	-- a group of the Deep view (Constants / Upvalues / Nested functions) is
+	-- where its function is
+	if node.Kind == "group" then
+		return if type(node.Up) == "table" and node.Up.Kind ~= nil then Actions.accessOf(api, subject, node.Up) else nil
+	end
+	-- a nested function under a row: its steps from that row's function
+	if node.Kind == "proto" and type(node.Up) == "table" and node.Up.Kind ~= nil and type(node.Chain) == "table" then
+		local parent = Actions.accessOf(api, subject, node.Up)
+		return if parent then along(A, parent, node.Chain) else nil
+	end
 	-- a row under another row: one step from that row's path (an entry of
 	-- a table row, an upvalue of a function row)
 	if type(node.Up) == "table" and node.Up.Kind ~= nil then
@@ -563,7 +573,7 @@ function Actions.accessOf(api, subject, node): any
 		end
 	end
 	-- a function inside the loaded table (or a module's), by its keys
-	if node.Kind == "heading" and node.ChainFrom == "table" and base and type(node.Chain) == "table" then
+	if (node.Kind == "heading" or node.Kind == "function") and node.ChainFrom == "table" and base and type(node.Chain) == "table" then
 		return along(A, base, node.Chain)
 	end
 	if node.Kind == "upvalue" and node.OwnerChainFrom == "table" and base and type(node.OwnerChain) == "table" and type(node.Index) == "number" then

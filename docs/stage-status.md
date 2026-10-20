@@ -48,12 +48,16 @@
   - Upvalues scope **Search all functions**: every game function from `getgc` (executor ones left out) whose upvalues match the text (text contains, numbers, function and object names), optionally inside tables (matching entries under the table); results can be changed, and are read again after a change.
   - A table's summary counts its functions.
 
+- **Inside tables (20 Oct, user: "make sure that constants, strings, upvalues, and anything else relevant within tables is viewable, and editable, preferably with its own view mode exclusive to tables"):**
+  - Contents view **Deep** (tables only): one tree of everything inside; a function opens into Constants / Upvalues / Nested functions groups (empty ones left out), a nested function into its constants and nested functions; every row changeable, with paths (`debug.getproto(require(M).fn, 1)` etc.).
+  - A loaded table's Constants and Functions sub-tabs list its functions by key path (as Upvalues already did); the details pane gives their paths.
+
 ## Stage 5 decisions (P1–P10)
 - P1/P3 on/off at the next start. P2 ships no plugins except primes. P4 depend only on primes (`Requires` / `Uses`). P5 faults reported and counted, never auto-off. P6/P7 only preferences persist; Reset all leaves plugins alone. P8 plugins may use the whole folder. P9 reload for a plugin with a problem. P10 one side-bar tab per plugin; views are sub-tabs. No `api.data`. Variables: flat names with an owner.
 - Work in small stages, stopping at clean points to confirm.
 
 ## Numbers
-- Offline tests, all passing in normal and SHIFT = 58 mode: 3,224 each in 38 suites (… + P1a 55, P1b 41, P1c 33, P1d 42, P1e 25, P1f 48, P1g 88, pathback 26, access 44, loader 53, pathreload 48, svviews 33, svinspect 19, svfunctions 44, svforms 29, svupvalues 33).
+- Offline tests, all passing in normal and SHIFT = 58 mode: 3,250 each in 39 suites (… + P1a 55, P1b 41, P1c 33, P1d 42, P1e 25, P1f 48, P1g 88, pathback 26, access 44, loader 53, pathreload 48, svviews 33, svinspect 19, svfunctions 44, svforms 29, svupvalues 33, svdeep 26).
 - The test harness sets the shipped prime plugins aside for older suites; suites that test them call `H.keepPrimes()`.
 - Package: `python3 tools/make_manifest.py Tungsten`, `python3 tools/make_release.py`, then `python3 tools/package.py <out.zip>`.
 - Web loader (20 Oct): `loader.luau` + `release.txt` at the repo root; `test_loader` (53).
