@@ -1,8 +1,8 @@
 # Tungsten — Script Viewer revamp checklist (32 items)
 
 Install: replace `workspace/Tungsten/` with the folder from `Tungsten_revamp.zip`
-(or run the web loader line in `README.md`, with `{ Branch = "claude/determined-johnson-nab4r6" }`
-until it is merged to main). Turn on the Script Viewer in the Plugins tab if it is off.
+(or run the web loader line in `README.md`:
+`loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/HEAD/loader.luau" }).Body)()`). Turn on the Script Viewer in the Plugins tab if it is off.
 Report pass / fail per item; for a failure say what you saw, any `[x]` line
 (`/trace`) and the newest file in `Tungsten/logs/`.
 

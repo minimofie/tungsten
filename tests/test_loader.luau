@@ -270,6 +270,9 @@ do
 	check("offline: workspace copy runs", genv.Tungsten ~= nil and genv.Tungsten ~= handle)
 	OFFLINE = false
 
+	ok, err = runLoader({ Run = false })
+	check("no Branch: the repository's default branch (HEAD)", REQUESTS[1] == "https://raw.githubusercontent.com/minimofie/tungsten/HEAD/release.txt", REQUESTS[1])
+
 	ok, err = runLoader({ Branch = "nope" })
 	check("wrong branch: workspace copy runs", ok and contains(H.WARNINGS, "HTTP 404 Not Found"), err)
 

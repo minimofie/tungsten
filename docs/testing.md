@@ -31,7 +31,7 @@ tools/run_all.sh test_p1g.luau         # one suite, both modes
 python3 tests/build_test.py . tests/test_p1g.luau /tmp/r.luau && luau /tmp/r.luau   # see a stack trace
 ```
 
-Current count: 37 suites × 2 modes, 3,190 checks each.
+Current count: 37 suites × 2 modes, 3,191 checks each.
 
 ## Delivery per round
 

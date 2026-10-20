@@ -3,7 +3,7 @@
 
 	Run it in Volt:
 
-		loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()
+		loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/HEAD/loader.luau" }).Body)()
 
 	It brings the Tungsten folder in Volt's workspace up to date from GitHub,
 	then runs Tungsten.luau from that folder. Only files that changed since
@@ -15,8 +15,8 @@
 
 		loadstring(...)({ Branch = "dev", Owner = "name", Repo = "tungsten", Run = false })
 
-	Branch / Owner / Repo pick where files come from (default main,
-	minimofie, tungsten). Run = false updates the folder without starting
+	Branch / Owner / Repo pick where files come from (default HEAD, the
+	repository's default branch, minimofie, tungsten). Run = false updates the folder without starting
 	Tungsten.
 ]]
 
@@ -27,7 +27,7 @@ end
 
 local OWNER = options.Owner or "minimofie"
 local REPO = options.Repo or "tungsten"
-local BRANCH = options.Branch or "main"
+local BRANCH = options.Branch or "HEAD" -- raw.githubusercontent.com: the default branch
 local ROOT = "Tungsten"
 -- What the loader installed last time ("<hash> <size> <path>" lines), so a
 -- file is downloaded again only when its hash changes or it was edited.

@@ -15,7 +15,7 @@ The user tests in-game in Volt. You build, run the offline tests, then hand over
     - paths inside scripts (`base/access`)
   - Rounds 2 (`instanceviewer`) and 3 (`scanner`) are not started.
 - **Latest build:** `Tungsten_revamp.zip` (the 12-item Script Viewer revamp, 20 Oct), checklist `checklists/Tungsten_Revamp_Checklist.md`. Not tested in-game yet.
-- **Offline tests:** 37 suites, all passing in normal and `SHIFT = 58` mode, 3,190 checks each.
+- **Offline tests:** 37 suites, all passing in normal and `SHIFT = 58` mode, 3,191 checks each.
 - **The 12-item revamp of the Script Viewer is built** (request and design in `docs/next-request.md`; what was built in `docs/stage-status.md`). Waiting for the user's in-game results.
 - **Web loader:** `loader.luau` at the repo root (see Code map).
 - **No in-game results yet.** None of the Plugins-stage checklists in `checklists/` has been reported back. A reload symptom (P1_5b item D1) is still undescribed.
@@ -79,7 +79,7 @@ The user's test loop: copy the zip's `Tungsten/` folder into Volt's `workspace/T
 
 ## Code map
 
-The **web loader** is `loader.luau` at the repo root: `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()` installs or updates `workspace/Tungsten/` from `release.txt`, then runs it. Options: `({ Branch, Owner, Repo, Run = false })`.
+The **web loader** is `loader.luau` at the repo root: `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/HEAD/loader.luau" }).Body)()` installs or updates `workspace/Tungsten/` from `release.txt`, then runs it. Options: `({ Branch, Owner, Repo, Run = false })`.
 
 The loader is `Tungsten/Tungsten.luau`. It builds the context `T` (`T.import("base/x")` loads a module once) and sets `T.Access`, `T.Loaded`, `T.Variables`, `T.Explorer`, `T.PathBar`, `T.Console`, `T.Plugins`, `T.Menus`, `T.Undo`, `T.UI`, `T.Tabs` and others.
 

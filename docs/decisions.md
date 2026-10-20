@@ -28,7 +28,7 @@ Newest first within each section. Where this file and the original handoff disag
   - "Look into it" is **Inspect** everywhere. Copy path shows only where Inspect applies and real code reaches the value (never a row number).
   - Forms offer only the types that fit, plus "variable" (a picker). Upvalues and entries change type through a variable.
   - Hooks stay in round 3 (Q13).
-- **Web loader** (20 Oct, "set up the github repo to be loaded via executor loadstring"). `loader.luau` at the repo root is run with `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()`.
+- **Web loader** (20 Oct, "set up the github repo to be loaded via executor loadstring"). `loader.luau` at the repo root is run with `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/HEAD/loader.luau" }).Body)()`.
   - It installs or updates `workspace/Tungsten/` from `release.txt` (made by `tools/make_release.py`), downloading only files whose hash changed or that were edited, then runs `Tungsten.luau` from the folder.
   - Tungsten itself still runs from local files and downloads nothing. That keeps the "everything local" rule for everything after start-up, and `getcustomasset` icons, `listfiles` and plugins keep working.
   - The loader uses `request`, which has a Volt doc page; `game:HttpGet` has none.
