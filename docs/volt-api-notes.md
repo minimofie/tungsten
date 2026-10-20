@@ -41,6 +41,7 @@ The library lists: `getcallstack`, `getconstant`, `getconstants`, `getinfo`, `ge
 - **`debug.getproto(func | number | ProtoProxy, index, activated?)`**
   - Without `activated` it returns a ProtoProxy.
   - With `activated = true` it returns a **table of the live closures** using that prototype: the running copies, which have real upvalues. Only closures that exist are returned.
+- **`ProtoProxy`** (its own page): `typeof(proxy) == "ProtoProxy"`; `proxy.CodeHash` is a signed 32-bit hash of the proto's instructions (not cryptographic; compare on one executor version). It can be passed to `debug.getproto` / `getprotos`, `debug.getconstant(s)`, `debug.setconstant`, `debug.getinfo` / `setinfo`, Luau's `debug.info`, `hookproto`, `restoreproto` and `isprotohooked`. Calling it returns nothing and doesn't run the function. Not listed: `debug.getupvalues` and `getfunctionhash` (functions only).
 - **`debug.getinfo(func | number | ProtoProxy) -> table`**: there is no options string. Fields: `name` (or ""), `source`, `short_src`, `what` ("Lua" / "C" / "main"), `currentline` (a sentinel when not active), `nups`, `numparams`, `is_vararg` (1 or 0), `func`.
 - Luau's own `debug.info(fn, "s" | "l" | "n" | …)` is also used, e.g. source names for matching a script's functions, and line-defined.
 
@@ -68,6 +69,6 @@ The library lists: `getcallstack`, `getconstant`, `getconstants`, `getinfo`, `ge
 - **Hooks:** `hookmetamethod(game, "__namecall", newcclosure(fn))`, `getnamecallmethod`, `checkcaller`. Keep one shared hook in `getgenv` so re-runs don't stack, and always chain to the original.
 - **Clipboard:** `setclipboard` only; reading the clipboard isn't possible.
 
-## Functions in Tungsten's integrity list (50)
+## Functions in Tungsten's integrity list (51)
 
-See `Tungsten/base/integrity.luau`. Script-viewer additions this stage: `getsenv`, `getrunningscripts`, `getscripthash`, `getfunctionhash`, `iscclosure`, `isexecutorclosure`, `isreadonly`, `getrawmetatable`, `debug.getinfo`, `debug.getconstants`, `debug.getupvalues`, `debug.getprotos`, `filtergc`, `debug.setconstant`, `debug.setupvalue`, `setreadonly` and `getgc`. When you add one, bump the `50/50` expectations in `test_stage4c`, `test_p1a` and `test_p1e`, and give the harness a stand-in.
+See `Tungsten/base/integrity.luau`. Script-viewer additions this stage: `getsenv`, `getrunningscripts`, `getscripthash`, `getfunctionhash`, `iscclosure`, `isexecutorclosure`, `isreadonly`, `getrawmetatable`, `debug.getinfo`, `debug.getconstants`, `debug.getupvalues`, `debug.getprotos`, `filtergc`, `debug.setconstant`, `debug.setupvalue`, `setreadonly`, `getgc` and (20 Oct, paths to nested functions) `debug.getproto`. When you add one, bump the `51/51` expectations in `test_stage4c`, `test_p1a` and `test_p1e`, and give the harness a stand-in.

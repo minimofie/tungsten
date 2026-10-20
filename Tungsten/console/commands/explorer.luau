@@ -150,7 +150,7 @@ local commands = {
 			end
 			-- require(path).a.b / getsenv(path).x / debug.getupvalues(...)[n]
 			local head = raw:match("^([%a_][%w_%.]*)%s*%(")
-			if head == "require" or head == "getsenv" or head == "debug.getupvalues" then
+			if head == "require" or head == "getsenv" or head == "debug.getupvalues" or head == "debug.getproto" then
 				local Access = T.Access or T.import("base/access")
 				local access, why = Access.parse(raw)
 				if not access then

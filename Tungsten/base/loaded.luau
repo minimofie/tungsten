@@ -43,6 +43,14 @@
 	Every load and clear remembers what it replaced (up to 50; the same
 	list again isn't remembered twice). Lists whose Instances were all
 	destroyed are skipped.
+
+	Loading again (the path bar's reload button):
+		Loaded.reload(by?) -> ok, problem?
+	Loads the same list again: a value reached inside a script (its
+	Access) is read again, so a changed upvalue or entry shows its new
+	value; Instances and other values load as they are. A path that no
+	longer resolves keeps its old value and the reason comes back as
+	problem. Not remembered for back. Every tab is told, like any load.
 ]]
 
 local T = ...
@@ -342,7 +350,8 @@ function Loaded.load(given: any, opts: { [string]: any }?): boolean
 		return false
 	end
 	local by = (opts and opts.By) or "you"
-	local goingBack = opts ~= nil and opts.Back == true
+	-- going back or loading again: what is replaced isn't remembered
+	local goingBack = opts ~= nil and (opts.Back == true or opts.Reload == true)
 	if loading then
 		-- A tab loaded something while being told: run it after.
 		queued = { List = list, By = by }
@@ -386,6 +395,36 @@ function Loaded.clear(by: string?)
 	items = {}
 	unwatch()
 	Loaded.Changed:Fire({}, by or "you")
+end
+
+-- Loads the same list again, values inside scripts read again.
+function Loaded.reload(by: string?): (boolean, string?)
+	if #items == 0 then
+		return false, "nothing is loaded"
+	end
+	local list, problem = {}, nil
+	for _, item in items do
+		if Loaded.isTarget(item) and item.Access then
+			local ok, value = Access.resolve(item.Access)
+			if ok and value ~= nil then
+				if typeof(value) == "Instance" then
+					table.insert(list, value)
+				else
+					table.insert(list, Loaded.target(value, { Access = item.Access, Label = item.Label, Origin = item.Origin }))
+				end
+			else
+				problem = problem or (if ok then Access.code(item.Access) .. " is nil now" else tostring(value))
+				table.insert(list, item)
+			end
+		elseif not (typeof(item) == "Instance" and destroyed[item]) then
+			table.insert(list, item)
+		end
+	end
+	if #list == 0 then
+		return false, "what was loaded is gone"
+	end
+	Loaded.load(list, { By = by or "you", Reload = true })
+	return true, problem
 end
 
 -- Loads what was loaded before; false when there is nothing to go back to.

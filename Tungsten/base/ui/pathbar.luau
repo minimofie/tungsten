@@ -3,7 +3,7 @@
 	The strip under the title bar, on every tab, like a file explorer's
 	address bar:
 
-		[⌄]  game › Workspace › Map › Door ›                         [→]
+		[⌄] [←]  game › Workspace › Map › Door ›                [→] [⟳]
 
 	- Shows the path of what is LOADED (base/loaded): one target shared by
 	  every tab (explorer › Load, the arrow, a crumb, a typed path, /load,
@@ -19,12 +19,16 @@
 	  paths scroll inside the box to keep the cursor in view.
 	- The arrow outside editing loads the explorer selection, like
 	  explorer › Load; with nothing selected it starts editing.
+	- ⟳ (right of the arrow) loads what is loaded again: values inside
+	  scripts are read again (Loaded.reload), not remembered for ←.
+	- Typing $name loads that variable (an Instance, or its value).
 	- The left button has two entries: Copy (the path as code) and
 	  Highlight (select it in the explorer, opening the explorer).
 	- Long paths scroll sideways (wheel down = left).
 
 		PathBar.show(instance)   -- loads it (Loaded.load), for every tab
 		PathBar.clear()          -- nothing loaded (Loaded.clear)
+		PathBar.reload()         -- load it again (the ⟳ button)
 		PathBar.current() -> the first loaded item (Instance or target) or nil
 		PathBar.Changed:Connect(function(item) end)
 ]]
@@ -56,6 +60,7 @@ PathBar.Changed = signal.new() -- (item or nil)
 
 local bar, crumbsScroll, crumbsList, editBox, hint = nil, nil, nil, nil, nil
 local menuButton, goButton, backButton, backIcon = nil, nil, nil, nil
+local reloadButton, reloadIcon = nil, nil
 local bin = signal.bin()
 local crumbBin = signal.bin() -- hover listeners of the current crumbs
 local watchers = {} -- connections on the shown instance and its ancestors
@@ -562,6 +567,40 @@ local function updateBack()
 end
 PathBar.updateBack = updateBack
 
+-- The reload button: greyed when nothing is loaded.
+local function updateReload()
+	if not reloadButton then
+		return
+	end
+	local can = Loaded.get() ~= nil
+	reloadButton.AutoButtonColor = false
+	reloadButton:SetAttribute("Enabled", can)
+	if reloadIcon then
+		Icons.tint(reloadIcon, if can then "TextDim" else "TextMuted", Animate.Fast)
+		reloadIcon.ImageTransparency = if can then 0 else 0.55
+	end
+end
+
+-- Loads what is loaded again (the ⟳ button): values inside scripts are
+-- read again; the crumbs are drawn again even when nothing changed.
+function PathBar.reload(): (boolean, string?)
+	if editing then
+		stopEditing()
+	end
+	local ok, problem = Loaded.reload("you")
+	if not ok then
+		showError(tostring(problem))
+		return false, problem
+	end
+	if problem then
+		showError(problem)
+	end
+	if bar then
+		PathBar._rebuild()
+	end
+	return true, problem
+end
+
 -- Goes back to what was loaded before (the back button).
 function PathBar.back(): boolean
 	if editing then
@@ -574,6 +613,7 @@ end
 
 local function refresh()
 	updateBack()
+	updateReload()
 	local item = Loaded.get()
 	local count = #Loaded.list()
 	if item == shown and count == shownCount and bar then
@@ -680,7 +720,7 @@ function PathBar.go(text: string?): (boolean, string?)
 	text = text or editBox.Text
 	-- require(path).a.b / getsenv(path).x / debug.getupvalues(...)[n]
 	local head = (text :: string):match("^%s*([%a_][%w_%.]*)%s*%(")
-	if head == "require" or head == "getsenv" or head == "debug.getupvalues" then
+	if head == "require" or head == "getsenv" or head == "debug.getupvalues" or head == "debug.getproto" then
 		local access, why = Access.parse(text :: string)
 		if not access then
 			showError(why or "not a path")
@@ -701,6 +741,26 @@ function PathBar.go(text: string?): (boolean, string?)
 			load({ value })
 		else
 			Loaded.load({ Loaded.target(value, { Access = access, Label = crumbs[#crumbs].Text }) })
+		end
+		return true, nil
+	end
+	-- $name: a variable (an Instance, or its value as a target)
+	local varName = (text :: string):match("^%s*%$([%a_][%w_]*)%s*$")
+	if varName then
+		local Variables = T.Variables or T.import("base/variables")
+		local value, exists = Variables.get(varName)
+		if not exists or value == nil then
+			local why = ("$%s doesn't exist"):format(varName)
+			showError(why)
+			return false, why
+		end
+		stopEditing()
+		if typeof(value) == "Instance" then
+			load({ value })
+		elseif type(value) == "table" and #value > 0 and typeof(value[1]) == "Instance" then
+			load(value) -- several Instances ($sel)
+		else
+			Loaded.load({ Loaded.target(value, { Label = "$" .. varName }) })
 		end
 		return true, nil
 	end
@@ -834,8 +894,20 @@ function PathBar.start(window, explorer, tabs)
 	menuButton = iconButton("Menu", "chevron_down", 0, UDim2.new(0, 0, 0.5, 0))
 	-- back: right of the menu button; loads what was loaded before
 	backButton, backIcon = iconButton("Back", "arrow_left", 0, UDim2.new(0, BUTTON + GAP, 0.5, 0), Loaded.canGoBack)
-	goButton = iconButton("Go", "arrow_right", 1, UDim2.new(1, 0, 0.5, 0))
-	PathBar.MenuButton, PathBar.GoButton, PathBar.BackButton = menuButton, goButton, backButton
+	goButton = iconButton("Go", "arrow_right", 1, UDim2.new(1, -(BUTTON + GAP), 0.5, 0))
+	-- reload: right of the arrow; loads what is loaded again
+	reloadButton, reloadIcon = iconButton("Reload", "refresh", 1, UDim2.new(1, 0, 0.5, 0), function()
+		return Loaded.get() ~= nil
+	end)
+	PathBar.MenuButton, PathBar.GoButton, PathBar.BackButton, PathBar.ReloadButton = menuButton, goButton, backButton, reloadButton
+	pcall(T.import("base/ui/components/tooltip").attach, reloadButton, function()
+		return if Loaded.get() ~= nil then "Load again (reads values inside scripts again)" else "Nothing loaded"
+	end)
+	bin:Add(reloadButton.Activated:Connect(function()
+		if Loaded.get() ~= nil then
+			PathBar.reload()
+		end
+	end))
 	pcall(T.import("base/ui/components/tooltip").attach, backButton, function()
 		local list = Loaded.previous()
 		return if list then "Back to " .. describeList(list) else "Nothing to go back to"
@@ -848,7 +920,7 @@ function PathBar.start(window, explorer, tabs)
 	local field = new("TextButton", {
 		Name = "Field",
 		Position = UDim2.fromOffset((BUTTON + GAP) * 2, 0),
-		Size = UDim2.new(1, -(BUTTON + GAP) * 3, 1, 0),
+		Size = UDim2.new(1, -(BUTTON + GAP) * 4, 1, 0),
 		Theme = { BackgroundColor3 = "Chrome" },
 		Parent = bar,
 	})
@@ -983,6 +1055,7 @@ function PathBar.start(window, explorer, tabs)
 		PathBar.Changed:DisconnectAll()
 		bar, crumbsScroll, crumbsList, editBox = nil, nil, nil, nil
 		backButton, backIcon = nil, nil
+		reloadButton, reloadIcon = nil, nil
 		shown = nil
 		shownCount = 0
 		editing = false

@@ -1535,12 +1535,32 @@ env = setmetatable({
 	checkcaller = function() return H.CHECKCALLER ~= false end,
 	newcclosure = function(fn) return fn end,
 	debug = setmetatable({
-		-- protos are tables in the mock: { Info = { name, numparams, is_vararg, nups }, Protos = { … } }
+		-- protos are tables in the mock: { Info = { name, numparams, is_vararg, nups },
+		-- Constants, Protos = { … }, Closures = { running copies }, CodeHash }.
+		-- Handed out by getprotos / getproto they become ProtoProxy (typeof).
 		getprotos = function(fn)
-			if realType(fn) == "table" then return fn.Protos or {} end
-			local info = H.FN[fn]
-			if info and info.Protos then return table.clone(info.Protos) end
-			return (H.PROTOS and H.PROTOS[fn]) or {}
+			local list
+			if realType(fn) == "table" then
+				list = fn.Protos or {}
+			else
+				local info = H.FN[fn]
+				list = if info and info.Protos then table.clone(info.Protos) else ((H.PROTOS and H.PROTOS[fn]) or {})
+			end
+			for _, proto in list do
+				H.proto(proto)
+			end
+			return list
+		end,
+		-- debug.getproto(f, i, activated?): the ProtoProxy, or with activated
+		-- = true its running copies (proto.Closures)
+		getproto = function(fn, index, activated)
+			assert(realType(index) == "number", "getproto: index must be a number")
+			H.GETPROTO_CALLS = (H.GETPROTO_CALLS or 0) + 1
+			local list = env.debug.getprotos(fn)
+			local proto = list[index]
+			if proto == nil then error("getproto: no proto at index " .. index, 2) end
+			if activated then return table.clone(proto.Closures or {}) end
+			return proto
 		end,
 		-- debug.info: H.FN[fn].Source stands in for a game script's chunk
 		-- name ("s"); everything else is Luau's own
@@ -1609,6 +1629,15 @@ env = setmetatable({
 }, { __index = _G })
 H.env = env
 H.genv = genv
+
+-- Marks a mock proto table as a ProtoProxy (typeof says so) and returns it.
+local PROTO_MT = { __type = "ProtoProxy" }
+function H.proto(t)
+	if realType(t) == "table" and getmetatable(t) == nil then
+		setmetatable(t, PROTO_MT)
+	end
+	return t
+end
 
 ----------------------------------------------------------------------
 -- Driving

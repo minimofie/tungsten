@@ -85,7 +85,7 @@ end
 ----------------------------------------------------------------------
 check("welcome names tungsten (unified)", C.Lines[1].Plain:find("tungsten (unified) v0.4.0", 1, true) ~= nil, C.Lines[1].Plain)
 check("welcome has load time and plugins", C.Lines[2].Plain:find("loaded in %d+ ms · 0 plugins loaded") ~= nil, C.Lines[2].Plain)
-check("welcome integrity ok", C.Lines[3].Plain:find("integrity ok", 1, true) and C.Lines[3].Plain:find("files", 1, true) and C.Lines[3].Plain:find("50/50 executor functions", 1, true), C.Lines[3].Plain)
+check("welcome integrity ok", C.Lines[3].Plain:find("integrity ok", 1, true) and C.Lines[3].Plain:find("files", 1, true) and C.Lines[3].Plain:find("51/51 executor functions", 1, true), C.Lines[3].Plain)
 local Integrity = T.import("base/integrity")
 local report = Integrity.run()
 check("integrity clean in a full copy", report.Clean, table.concat(report.Problems, "; "))

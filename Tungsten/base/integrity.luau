@@ -71,6 +71,7 @@ Integrity.Functions = {
 	{ "debug.getconstants", "script viewer: constants" },
 	{ "debug.getupvalues", "script viewer: upvalues" },
 	{ "debug.getprotos", "script viewer: nested functions" },
+	{ "debug.getproto", "paths to nested functions and their running copies" },
 	{ "filtergc", "script viewer: references of constants and upvalues, a script's running functions" },
 	{ "getgc", "script viewer: a script's running functions (when filtergc finds none)" },
 	{ "debug.setconstant", "script viewer: changing constants" },

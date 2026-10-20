@@ -74,7 +74,7 @@ local function lines(from)
 	end
 	return table.concat(out, "\n")
 end
-check("integrity ok with it shipped, its Volt functions listed", lines():find("integrity ok", 1, true) ~= nil and lines():find("50/50 executor functions", 1, true) ~= nil, lines():match("[^\n]*integrity[^\n]*"))
+check("integrity ok with it shipped, its Volt functions listed", lines():find("integrity ok", 1, true) ~= nil and lines():find("51/51 executor functions", 1, true) ~= nil, lines():match("[^\n]*integrity[^\n]*"))
 local Integrity = T.import("base/integrity")
 local listed = {}
 for _, entry in Integrity.Functions do

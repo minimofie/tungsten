@@ -1,6 +1,6 @@
 version 0.4.0
 3bd90b07ff2c 7383 Tungsten.luau
-7d4355ddf173 15829 base/access.luau
+eccdf5a30128 20157 base/access.luau
 deb0efc13aba 32957 base/api.luau
 68f20e444902 135767 base/data/api.luau
 427abab3d43e 8780 base/data/categories.luau
@@ -160,7 +160,7 @@ ea31539add82 252 base/data/icons/type_vector.svg
 d290de6672a2 1178 base/data/icons/variable.png
 07ce11ab3752 317 base/data/icons/variable.svg
 324a1b1a36b6 7125 base/data/icons.luau
-39088e3c097b 11090 base/data/manifest.luau
+b51e5166ef25 11090 base/data/manifest.luau
 bf60bc105544 2830 base/datastore.luau
 cfd4e4d2b0c3 27044 base/explorer/actions.luau
 45d626bf4cf4 11534 base/explorer/api.luau
@@ -179,8 +179,8 @@ ca430973b128 34691 base/explorer/propview.luau
 efc773b046c2 23647 base/explorer/tree.luau
 a86b1ffc093f 35668 base/explorer/treeview.luau
 5c1642a8b3b2 1200 base/import.luau
-4313d7884f38 8020 base/integrity.luau
-72bb82558bc3 11622 base/loaded.luau
+91a86dcd9429 8097 base/integrity.luau
+236240738cb8 13104 base/loaded.luau
 62d5491e2543 3637 base/logger.luau
 4ab984c3eb70 27812 base/plugins.luau
 509fe6af0597 6109 base/preferences.luau
@@ -218,7 +218,7 @@ dba9944e3c23 6260 base/ui/components/tooltip.luau
 c80f037ba5e6 6227 base/ui/loading.luau
 f8c15b12e0cd 16099 base/ui/menus.luau
 d07926cae278 15222 base/ui/overlay.luau
-e04c90623ca9 30003 base/ui/pathbar.luau
+d609f42feb17 32499 base/ui/pathbar.luau
 c351e5f3da3e 15656 base/ui/tabbar.luau
 9138c5e6bf6d 10116 base/ui/ui.luau
 59a155e448ba 22551 base/ui/window.luau
@@ -226,7 +226,7 @@ cdfcb8c2bac0 6009 base/undo.luau
 59b29b7a4fc1 13460 base/variables.luau
 6db237613539 15537 console/commands/core.luau
 bf7883f83560 6417 console/commands/errors.luau
-1040776fbf5c 30396 console/commands/explorer.luau
+b15e70c1762d 30424 console/commands/explorer.luau
 f5d23c5df903 8677 console/commands/plugins.luau
 d6bf3636f164 5999 console/commands/session.luau
 fb778a6a6c11 20435 console/commands/tools.luau

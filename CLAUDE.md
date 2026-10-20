@@ -98,7 +98,7 @@ The loader is `Tungsten/Tungsten.luau`. It builds the context `T` (`T.import("ba
 - `api.luau`: the plugin api.
   - Includes `api.loaded` (with `access`, `back`, `canGoBack`, `previous`), `api.plugins` (`get`, `open`, `isOn`), `api.ui` (`new`, `page`, `subtabs`…), `api.prompt` (`confirm`, `input`, `form`, `registerFieldKind`…), `api.menus`, `api.undo`, `api.variables`, `api.types`, `api.settings`, `api.tooltip`, `api.connect`, `api.spawn`.
 - `plugins.luau`: the plugin host. `Plugins.Prime = { "scriptviewer", "instanceviewer", "scanner" }`; primes ship in `Tungsten/plugins/<Folder>/` and start off; supports `Uses` and `Requires`.
-- `integrity.luau`: the list of executor functions Tungsten relies on (50 now). The welcome line says `50/50 executor functions`; tests assert the count, so update them when adding one.
+- `integrity.luau`: the list of executor functions Tungsten relies on (51 now). The welcome line says `51/51 executor functions`; tests assert the count, so update them when adding one.
 - `ui/components/*`: the UI components:
   - List (virtualized), Dropdown, TextEditor (virtualized)
   - SubTabs (pills, badges), Scroll, Input, Toggle, Button, Label, Page

@@ -7,15 +7,21 @@
 		require(game.ReplicatedStorage.Combat).Weapons.Sword.swing
 		getsenv(game.Players.LocalPlayer.PlayerScripts.Main).update
 		debug.getupvalues(require(game.ReplicatedStorage.Util).tick)[2]
+		debug.getproto(require(game.ReplicatedStorage.Util).tick, 1)
+		debug.getproto(getsenv(game.Players.LocalPlayer.PlayerScripts.Main).update, 2, true)[1]
 
 	An access is a table:
 		{ Root = "require" | "getsenv", Script = Instance,
-		  Steps = { { Kind = "key", Key = k } | { Kind = "upvalue", Index = n } } }
+		  Steps = { { Kind = "key", Key = k } | { Kind = "upvalue", Index = n }
+		          | { Kind = "proto", Index = n }               -- a nested function (ProtoProxy)
+		          | { Kind = "closure", Index = n, Copy = k } } } -- its k-th running copy
 
 		Access.root(script)             -> an access with no steps (nil if not a script)
 		Access.extend(access, step)     -> a new access one step further
 		Access.key(access, key)         -> extend by a key (nil if the key can't be written)
 		Access.upvalue(access, index)   -> extend by an upvalue
+		Access.proto(access, index)     -> extend by a nested function (debug.getproto)
+		Access.closure(access, index, k) -> extend by a nested function's k-th running copy
 		Access.code(access)             -> the code text
 		Access.crumbs(access)           -> { { Text, Step? } } root first
 		Access.resolve(access, upTo?)   -> ok, value | why   (upTo: steps to walk)
@@ -121,6 +127,20 @@ function Access.upvalue(access, index: number)
 	return Access.extend(access, { Kind = "upvalue", Index = index })
 end
 
+function Access.proto(access, index: number)
+	if not Access.is(access) or type(index) ~= "number" then
+		return nil
+	end
+	return Access.extend(access, { Kind = "proto", Index = index })
+end
+
+function Access.closure(access, index: number, copy: number)
+	if not Access.is(access) or type(index) ~= "number" or type(copy) ~= "number" then
+		return nil
+	end
+	return Access.extend(access, { Kind = "closure", Index = index, Copy = copy })
+end
+
 ----------------------------------------------------------------------
 -- Text
 ----------------------------------------------------------------------
@@ -140,6 +160,10 @@ end
 local function stepText(step): string
 	if step.Kind == "upvalue" then
 		return "upvalue " .. tostring(step.Index)
+	elseif step.Kind == "proto" then
+		return "nested " .. tostring(step.Index)
+	elseif step.Kind == "closure" then
+		return ("nested %s · running %s"):format(tostring(step.Index), tostring(step.Copy))
 	end
 	local key = step.Key
 	if type(key) == "string" then
@@ -154,6 +178,10 @@ function Access.code(access): string
 	for _, step in access.Steps do
 		if step.Kind == "upvalue" then
 			code = ("debug.getupvalues(%s)[%d]"):format(code, step.Index)
+		elseif step.Kind == "proto" then
+			code = ("debug.getproto(%s, %d)"):format(code, step.Index)
+		elseif step.Kind == "closure" then
+			code = ("debug.getproto(%s, %d, true)[%d]"):format(code, step.Index, step.Copy)
 		else
 			code ..= keyCode(step.Key)
 		end
@@ -232,9 +260,33 @@ function Access.resolve(access, upTo: number?): (boolean, any)
 	local last = math.min(upTo or #access.Steps, #access.Steps)
 	for index = 1, last do
 		local step = access.Steps[index]
-		if step.Kind == "upvalue" then
+		local before = stepText(access.Steps[index - 1] or { Kind = "key", Key = access.Root .. "()" })
+		if step.Kind == "proto" or step.Kind == "closure" then
+			-- a nested function: of a function, or of a nested function (ProtoProxy)
+			if type(value) ~= "function" and typeof(value) ~= "ProtoProxy" then
+				return false, ("%s isn't a function (it has no nested functions)"):format(before)
+			end
+			local okProto, result = call("debug.getproto", value, step.Index, step.Kind == "closure" or nil)
+			if not okProto then
+				return false, "debug.getproto failed: " .. tostring(result)
+			end
+			if step.Kind == "closure" then
+				if type(result) ~= "table" then
+					return false, "debug.getproto didn't list running copies"
+				end
+				value = result[step.Copy]
+				if value == nil then
+					return false, ("%s has no running copy %d now"):format(("nested %d"):format(step.Index), step.Copy)
+				end
+			else
+				value = result
+			end
+		elseif step.Kind == "upvalue" then
+			if typeof(value) == "ProtoProxy" then
+				return false, ("%s is a nested function's prototype: its running copies have the upvalues"):format(before)
+			end
 			if type(value) ~= "function" then
-				return false, ("%s isn't a function (it has no upvalues)"):format(stepText(access.Steps[index - 1] or { Kind = "key", Key = access.Root .. "()" }))
+				return false, ("%s isn't a function (it has no upvalues)"):format(before)
 			end
 			local okUp, upvalues = call("debug.getupvalues", value)
 			if not okUp or type(upvalues) ~= "table" then
@@ -333,9 +385,71 @@ local function readSteps(rest: string, steps: { any }): (boolean, string?)
 	return true, nil
 end
 
+-- Splits "a, 2, true" at its top-level commas (quotes and brackets kept).
+local function splitArgs(text: string): { string }
+	local out, depth, quote, start = {}, 0, nil, 1
+	local i = 1
+	while i <= #text do
+		local c = text:sub(i, i)
+		if quote then
+			if c == "\\" then
+				i += 1
+			elseif c == quote then
+				quote = nil
+			end
+		elseif c == "\"" or c == "'" then
+			quote = c
+		elseif c == "(" or c == "[" or c == "{" then
+			depth += 1
+		elseif c == ")" or c == "]" or c == "}" then
+			depth -= 1
+		elseif c == "," and depth == 0 then
+			table.insert(out, text:sub(start, i - 1))
+			start = i + 1
+		end
+		i += 1
+	end
+	table.insert(out, text:sub(start))
+	return out
+end
+
 function Access.parse(text: string)
 	local source = (tostring(text or "")):match("^%s*(.-)%s*$")
 	local head = source:match("^([%a_][%w_%.]*)%s*%(")
+	if head == "debug.getproto" then
+		local open = (source:find("(", 1, true) :: number)
+		local close = closing(source, open)
+		if not close then
+			return nil, "a ( isn't closed"
+		end
+		local args = splitArgs(source:sub(open + 1, close - 1))
+		local index = tonumber((args[2] or ""):match("^%s*(%d+)%s*$"))
+		local activated = args[3] ~= nil and args[3]:match("^%s*true%s*$") ~= nil
+		if #args < 2 or #args > 3 or not index or (args[3] ~= nil and not activated) then
+			return nil, "debug.getproto(...) takes a function, a number and optionally true: debug.getproto(f, 1) or debug.getproto(f, 1, true)[1]"
+		end
+		local inner, why = Access.parse(args[1])
+		if not inner then
+			return nil, why
+		end
+		local steps = table.clone(inner.Steps)
+		local rest = source:sub(close + 1)
+		if activated then
+			local copy, after = rest:match("^%s*%[%s*(%d+)%s*%](.*)$")
+			if not copy then
+				return nil, "debug.getproto(f, n, true) lists running copies: pick one with [1]"
+			end
+			table.insert(steps, { Kind = "closure", Index = index, Copy = tonumber(copy) })
+			rest = after
+		else
+			table.insert(steps, { Kind = "proto", Index = index })
+		end
+		local ok, why2 = readSteps(rest, steps)
+		if not ok then
+			return nil, why2
+		end
+		return make(inner.Root, inner.Script, steps)
+	end
 	if head == "debug.getupvalues" then
 		local open = (source:find("(", 1, true) :: number)
 		local close = closing(source, open)

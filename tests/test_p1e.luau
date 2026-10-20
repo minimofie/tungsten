@@ -39,7 +39,7 @@ local record = Plugins.get("scriptviewer")
 local exports, api = record.Exports, record.Api
 check("integrity lists filtergc (46 functions)", (function()
 	for _, line in C.Lines do
-		if line.Plain:find("50/50 executor functions", 1, true) then
+		if line.Plain:find("51/51 executor functions", 1, true) then
 			return true
 		end
 	end
