@@ -110,6 +110,7 @@ local function tableChildren(node, t: { [any]: any }, ancestors)
 		local child = valueNode(node.Id .. "/" .. keyText(key), keyText(key), joinPath(node.Path, key), rawget(t, key), node.Depth + 1, ancestors, "entry")
 		child.Parent = t -- the table it is in, and its key (editing)
 		child.RawKey = key
+		child.Up = node -- the row it is under (its path)
 		table.insert(out, child)
 	end
 	return out
@@ -135,6 +136,7 @@ local function functionChildren(node, fn: any, ancestors)
 		local child = valueNode(node.Id .. "/u" .. tostring(index), key, node.Path .. "↑" .. tostring(index), upvalues[index], node.Depth + 1, ancestors, "upvalue")
 		child.Index = index
 		child.Owner = fn -- the function this is an upvalue of (references)
+		child.Up = node
 		table.insert(out, child)
 	end
 	return out
@@ -646,10 +648,13 @@ end
 
 -- A script's running functions. A script's main function as the viewer
 -- has it is a fresh copy (getscriptclosure), so these are where its
--- upvalues are. Found three ways, the first that finds any wins:
+-- upvalues are. Found four ways, the first that finds any wins:
 --   1. filtergc Environment = the script's environment (getsenv)
---   2. filtergc Source = the script's full name, re-checked
---   3. getgc: every Luau function whose source is the script's full name
+--   2. getgc: every Luau function whose environment's `script` is it
+--      (works for scripts that were cloned and moved, whose source name
+--      is where they were made)
+--   3. filtergc Source = the script's full name, re-checked
+--   4. getgc: every Luau function whose source is the script's full name
 -- Returns the list (by line) and how they were found, or nil and why.
 Rows.MaxLive = 300
 
@@ -705,7 +710,22 @@ function Rows.liveFunctions(subject): ({ any }?, string?, string?)
 			table.insert(notes, "filtergc (Environment) failed: " .. tostring(list))
 		end
 	end
-	-- 2. by source name, re-checked (how filtergc compares Source isn't documented)
+	-- 2. every function the collector knows whose environment's script is it
+	if #found == 0 and typeof(script) == "Instance" and Inspect.volt("getgc") then
+		local ok, list = call("getgc", false)
+		if ok then
+			take(list, function(fn)
+				local okEnv, fnEnv = pcall(getfenv, fn)
+				if not okEnv or type(fnEnv) ~= "table" then
+					return false
+				end
+				local okScript, owner = pcall(rawget, fnEnv, "script")
+				return okScript and typeof(owner) == "Instance" and (owner == script or Inspect.same(owner, script))
+			end)
+			how = if #found > 0 then "script" else how
+		end
+	end
+	-- 3. by source name, re-checked (how filtergc compares Source isn't documented)
 	if #found == 0 and fullName and hasFilter then
 		local ok, list = call("filtergc", "function", { Source = fullName, IgnoreExecutor = true })
 		if ok then
@@ -715,7 +735,7 @@ function Rows.liveFunctions(subject): ({ any }?, string?, string?)
 			how = "source"
 		end
 	end
-	-- 3. every function the collector knows, by source name
+	-- 4. every function the collector knows, by source name
 	if #found == 0 and fullName and Inspect.volt("getgc") then
 		local ok, list = call("getgc", false)
 		if ok then
@@ -773,6 +793,242 @@ function Rows.upvaluesOfFunctions(list: { any }): ({ any }, string?)
 		return {}, ("none of its %d running functions has upvalues"):format(#list)
 	end
 	return out, nil
+end
+
+-- Upvalues of several functions with one left out list: exclude[fn] = true.
+function Rows.upvaluesOfOthers(list: { any }, exclude: { [any]: boolean }): ({ any }, string?)
+	local rest = {}
+	for _, fn in list do
+		if not exclude[fn] then
+			table.insert(rest, fn)
+		end
+	end
+	return Rows.upvaluesOfFunctions(rest)
+end
+
+----------------------------------------------------------------------
+-- Functions inside a table (a loaded table, a module's returned table)
+----------------------------------------------------------------------
+
+Rows.TableDepth = 4 -- how deep a table is walked for its functions
+Rows.TableBudget = 20000 -- entries the walk looks at most
+Rows.MaxTableFunctions = 300
+
+-- Every Luau function in a table and the tables inside it (shared and
+-- cyclic tables once), with the keys that reach it.
+-- -> { { Fn, Keys = { k1, k2, … }, Path = "a.b" } }
+function Rows.functionsInTable(t: any): { any }
+	local out = {}
+	if type(t) ~= "table" then
+		return out
+	end
+	local seenTables, seenFns = { [t] = true }, {}
+	local budget = Rows.TableBudget
+	local function walk(tbl, keys, path: string, depth: number)
+		local list = {}
+		for key in next, tbl do
+			budget -= 1
+			if budget <= 0 then
+				break
+			end
+			table.insert(list, key)
+		end
+		sortKeys(list)
+		for _, key in list do
+			if #out >= Rows.MaxTableFunctions then
+				return
+			end
+			local value = rawget(tbl, key)
+			local writable = type(key) == "string" or type(key) == "number" or type(key) == "boolean"
+			if writable then
+				local here = joinPath(path, key)
+				local mine = table.clone(keys)
+				table.insert(mine, key)
+				if usable(value) and not seenFns[value] then
+					seenFns[value] = true
+					table.insert(out, { Fn = value, Keys = mine, Path = here })
+				elseif type(value) == "table" and not seenTables[value] and depth < Rows.TableDepth then
+					seenTables[value] = true
+					walk(value, mine, here, depth + 1)
+				end
+			end
+		end
+	end
+	walk(t, {}, "", 1)
+	return out
+end
+
+-- The upvalues of every Luau function in a table, a heading per function
+-- named by its key path. A heading's Chain is the key steps from the
+-- table (ChainFrom = "table"), so its path can be shown and copied.
+function Rows.upvaluesOfTable(t: any): ({ any }, string?, { [any]: boolean })
+	local found = Rows.functionsInTable(t)
+	local out, shown = {}, {}
+	for index, entry in found do
+		shown[entry.Fn] = true
+		local id = "t" .. index
+		local rows = Rows.upvalues(entry.Fn)
+		local chain = {}
+		for _, key in entry.Keys do
+			table.insert(chain, { Kind = "key", Key = key })
+		end
+		prefix(rows, id, entry.Path)
+		local node = heading(id, entry.Fn, entry.Path, rows)
+		node.Chain, node.ChainFrom = chain, "table"
+		for _, row in rows do
+			row.OwnerChain, row.OwnerChainFrom = chain, "table"
+		end
+		table.insert(out, node)
+	end
+	if #out == 0 then
+		return {}, "no Luau functions in this table (nothing has upvalues)", shown
+	end
+	return out, nil, shown
+end
+
+----------------------------------------------------------------------
+-- Searching every function's upvalues (the scope "Search all functions")
+----------------------------------------------------------------------
+
+Rows.ScanLimit = 200 -- functions a search lists at most
+Rows.ScanEntries = 50 -- matching entries a table upvalue lists at most
+
+-- Does a value match the search text? Text: contains it (any case); a
+-- number: equal, or its text starts with it; a boolean: "true" / "false";
+-- a function: its name contains it; an Instance: its name contains it.
+function Rows.matches(value: any, query: string): boolean
+	local q = query:lower()
+	if q == "" then
+		return false
+	end
+	local kind = typeof(value)
+	if kind == "string" then
+		return value:lower():find(q, 1, true) ~= nil
+	elseif kind == "number" then
+		local n = tonumber(query)
+		return (n ~= nil and n == value) or tostring(value):lower():sub(1, #q) == q
+	elseif kind == "boolean" then
+		return tostring(value) == q
+	elseif kind == "function" then
+		return Inspect.functionName(value):lower():find(q, 1, true) ~= nil
+	elseif kind == "Instance" then
+		local ok, name = pcall(function()
+			return value.Name
+		end)
+		return ok and type(name) == "string" and name:lower():find(q, 1, true) ~= nil
+	elseif kind == "table" then
+		return false
+	end
+	local ok, text = pcall(tostring, value)
+	return ok and type(text) == "string" and text:lower():find(q, 1, true) ~= nil
+end
+
+-- Every game function (getgc; the executor's own left out) with an upvalue
+-- that matches. opts.Tables: also look inside table upvalues (keys and
+-- values); the table's row then opens into the entries that matched.
+-- opts.Yield(): called now and then so a long search doesn't freeze.
+-- -> headings, why, { Functions = looked at, Capped = boolean }
+function Rows.scanUpvalues(query: string, opts: { [string]: any }?): ({ any }, string?, { [string]: any })
+	local o = opts or {}
+	local stats = { Functions = 0, Capped = false }
+	query = (query or ""):match("^%s*(.-)%s*$")
+	if #query < 2 and not tonumber(query) then
+		return {}, "type at least two characters (or a number) to search", stats
+	end
+	if not Inspect.volt("getgc") then
+		return {}, "getgc is missing: functions can't be searched", stats
+	end
+	local ok, list = call("getgc", false)
+	if not ok or type(list) ~= "table" then
+		return {}, "getgc failed: " .. tostring(list), stats
+	end
+	local out = {}
+	for count, fn in list do
+		if count % 2000 == 0 and o.Yield then
+			o.Yield()
+		end
+		if usable(fn) then
+			stats.Functions += 1
+			local okUp, upvalues = call("debug.getupvalues", fn)
+			if okUp and type(upvalues) == "table" then
+				local rows = {}
+				local indexes = {}
+				for index in next, upvalues do
+					table.insert(indexes, index)
+				end
+				sortKeys(indexes)
+				for _, index in indexes do
+					local value = upvalues[index]
+					local root = { [fn] = true }
+					if type(value) == "table" and o.Tables then
+						local matched = {}
+						for key, entry in next, value do
+							if not rawequal(entry, value) and (Rows.matches(key, query) or Rows.matches(entry, query)) then
+								table.insert(matched, key)
+								if #matched >= Rows.ScanEntries then
+									break
+								end
+							end
+						end
+						if #matched > 0 then
+							local node = valueNode("s" .. #out + 1 .. "/u" .. tostring(index), tostring(index), "upvalue " .. tostring(index), value, 0, root, "upvalue")
+							node.Index, node.Owner = index, fn
+							node.Note = ("%d matching %s"):format(#matched, if #matched == 1 then "entry" else "entries")
+							node.Expandable = true
+							sortKeys(matched)
+							node.Children = function()
+								local children = {}
+								for _, key in matched do
+									local child = valueNode(node.Id .. "/" .. keyText(key), keyText(key), joinPath(node.Path, key), rawget(value, key), node.Depth + 1, { [value] = true, [fn] = true }, "entry")
+									child.Parent, child.RawKey, child.Up = value, key, node
+									table.insert(children, child)
+								end
+								return children
+							end
+							table.insert(rows, node)
+						end
+					elseif type(value) ~= "table" and Rows.matches(value, query) then
+						local node = valueNode("s" .. #out + 1 .. "/u" .. tostring(index), tostring(index), "upvalue " .. tostring(index), value, 0, root, "upvalue")
+						node.Index, node.Owner = index, fn
+						table.insert(rows, node)
+					end
+				end
+				if #rows > 0 then
+					local id = "s" .. #out + 1
+					local okInfo, source, line = pcall(debug.info, fn, "sl")
+					local where = if okInfo and type(source) == "string" then source:gsub("^[=@]", "") .. (if type(line) == "number" and line > 0 then ":" .. line else "") else "?"
+					prefix(rows, id, Inspect.functionName(fn))
+					local node = heading(id, fn, where, rows)
+					table.insert(out, node)
+					if #out >= Rows.ScanLimit then
+						stats.Capped = true
+						break
+					end
+				end
+			end
+		end
+	end
+	if #out == 0 then
+		return {}, ("no upvalue of the %d functions looked at matches %q%s"):format(stats.Functions, query, if o.Tables then "" else " (turn on Search inside tables to look in tables too)"), stats
+	end
+	return out, nil, stats
+end
+
+-- A search's rows read again after a change (values, and a table's
+-- entries when it is opened again).
+function Rows.refreshScan(headings: { any })
+	for _, headingNode in headings do
+		for _, node in Rows.childrenOf(headingNode) do
+			if node.Kind == "upvalue" and node.Owner ~= nil then
+				local ok, upvalues = call("debug.getupvalues", node.Owner)
+				if ok and type(upvalues) == "table" then
+					node.Value = upvalues[node.Index]
+					node.Type = typeof(node.Value)
+					node._children = nil
+				end
+			end
+		end
+	end
 end
 
 ----------------------------------------------------------------------

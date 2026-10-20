@@ -46,6 +46,11 @@ Files
 - test_svforms.luau Script Viewer: the value field (only the types that
                     fit, a variable picker), values from variables,
                     suggested variable names
+- test_svupvalues.luau Script Viewer upvalues: a moved script's running
+                    functions found by getfenv(fn).script, a loaded table's
+                    (and ModuleScript's) functions' upvalues by key path,
+                    paths through rows (Up), Search all functions (text,
+                    numbers, inside tables), results changed and refreshed
 - test_loader.luau  the web loader (loader.luau): release.txt is current with
                     Tungsten/; fresh install, nothing new, update (changed,
                     same-size, dropped, added, hand-edited files), a failed

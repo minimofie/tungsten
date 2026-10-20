@@ -543,6 +543,32 @@ function Actions.accessOf(api, subject, node): any
 		end
 		return A.extend(A.prefix(base, #base.Steps - 1), { Kind = "closure", Index = last.Index, Copy = k })
 	end
+	-- a row under another row: one step from that row's path (an entry of
+	-- a table row, an upvalue of a function row)
+	if type(node.Up) == "table" and node.Up.Kind ~= nil then
+		local parent = Actions.accessOf(api, subject, node.Up)
+		if parent then
+			if node.Kind == "entry" then
+				return A.key(parent, node.RawKey)
+			elseif node.Kind == "upvalue" and type(node.Index) == "number" then
+				return A.upvalue(parent, node.Index)
+			end
+		end
+	end
+	-- a top entry of the loaded table (Contents)
+	if node.Kind == "entry" and base and subject and rawequal(node.Parent, subject.Table) then
+		local direct = A.key(base, node.RawKey)
+		if direct then
+			return direct
+		end
+	end
+	-- a function inside the loaded table (or a module's), by its keys
+	if node.Kind == "heading" and node.ChainFrom == "table" and base and type(node.Chain) == "table" then
+		return along(A, base, node.Chain)
+	end
+	if node.Kind == "upvalue" and node.OwnerChainFrom == "table" and base and type(node.OwnerChain) == "table" and type(node.Index) == "number" then
+		return A.upvalue(along(A, base, node.OwnerChain), node.Index)
+	end
 	if node.Kind == "heading" and type(node.CopyIndex) == "number" and fromFunction and subject.Kind == "proto" then
 		return copyAccess(node.CopyIndex)
 	end

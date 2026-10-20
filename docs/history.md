@@ -37,6 +37,7 @@ The user also attached reference scripts (a spy, a module table editor, an explo
 | **Back button** ("add a back button to the right of the path bar dropdown button which returns you to the previous path or instance") | ← button, `Loaded` history, `arrow_left` icon, `api.loaded.back` | Back (8) |
 | **Script paths** ("display there path by their require reference. for example: require(game.workspace.module) and then the functions path within the script") | `base/access.luau`; path bar crumbs `script › require() › keys`; Copy as code; typed paths and `/load` parse it; Script Viewer passes paths on; `api.loaded.access` | ScriptPaths (10) |
 | **Web loader** ("set up the github repo to be loaded via executor loadstring") | `loader.luau` + `release.txt` (`tools/make_release.py`): installs / updates `workspace/Tungsten/` over `request`, then runs it | — |
+| **Upvalues fix** ("the upvalue tab … does not work still … upvalues within tables are not being displayed") | running functions by `getfenv(fn).script`; a table's functions' upvalues by key path; exact paths through rows; Upvalues scope Search all functions (inside tables too) | Upvalues |
 | **Revamp** (the 12 items in `docs/next-request.md`) | Path bar reload, `$var`, nested-function paths; scrolling work area, References toggle, Tree / List / Table, scope, guarded switching; Inspect and real Copy path; Functions with details pane; nested functions as subjects with running copies; value field with relevant types and a variable picker; Script Viewer docs | Revamp |
 
 ## Remaining after the revamp

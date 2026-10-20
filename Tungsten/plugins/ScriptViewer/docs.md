@@ -20,7 +20,7 @@ The line under the title says what it is (hover it for notes).
 
 - **Source**: the decompiled script, read-only. It decompiles when you open the sub-tab. **Copy** copies it; **Decompile again** runs it once more.
 - **Constants**: the numbers, text and other fixed values in the bytecode.
-- **Upvalues**: the variables a function captured from around it. A script's are in its running functions (the viewer finds them in memory), one heading per function.
+- **Upvalues**: the variables a function captured from around it. A script's are in its running functions (the viewer finds them in memory), one heading per function. A loaded table (or what a ModuleScript returned) shows the upvalues of every function inside it, named by its keys (`fire   Weapons.fire`).
 - **Functions**: the functions, with a details pane (below).
 - **Contents**: a table's entries.
 
@@ -44,6 +44,10 @@ The work area scrolls when the window is small, so the list keeps a useful heigh
 
 - **This function**: only its own.
 - **With nested functions**: also every nested function's constants, or the upvalues of the running copies of its nested functions, each under a heading. Click a heading to close or open it.
+
+## Searching every function
+
+Upvalues › scope **Search all functions** looks through every function the game has in memory (Tungsten's and the executor's own are left out) for upvalues that match what you type: text (any part of it, any case), a number, or the name of a function or an object. Press **Search** (or Enter). Turn on **Search inside tables** to look at the keys and values of table upvalues too: a matching table opens into just the entries that matched. Each function found is a heading with its source and line; its upvalues can be changed, inspected and copied like any other row. At most 200 functions are listed.
 
 ## References
 
@@ -78,7 +82,7 @@ Right-click a row for its menu, or double-click a row that doesn't open:
 - **Set to nil** / **Remove entry** (in red).
 - **Add entry to …**: a key and a value (from text, or a variable).
 - **Rename key…**.
-- **Inspect**: loads a table, function, nested function or Instance and opens the sub-tab that fits.
+- **Inspect**: loads a table, function, nested function or Instance and opens the sub-tab that fits. The path bar shows where it is: through tables, upvalues and nested functions, e.g. `debug.getupvalues(require(game.ReplicatedStorage.Mod).fire)[2].Damage`.
 - **Load (stay here)** and **Inspect running copy…** on Functions rows.
 - **Keep in a variable…** (it suggests a name), **Copy value**, and **Copy path** where code can reach the value.
 

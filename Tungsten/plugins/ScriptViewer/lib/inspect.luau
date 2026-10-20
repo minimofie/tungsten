@@ -85,6 +85,8 @@ local function same(a: Instance, b: Instance): boolean
 	return ok and yes == true
 end
 
+Inspect.same = same
+
 local function listed(list: any, obj: Instance): boolean
 	if type(list) ~= "table" then
 		return false

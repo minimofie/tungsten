@@ -14,8 +14,8 @@ The user tests in-game in Volt. You build, run the offline tests, then hand over
     - path bar back button
     - paths inside scripts (`base/access`)
   - Rounds 2 (`instanceviewer`) and 3 (`scanner`) are not started.
-- **Latest build:** `Tungsten_revamp.zip` (the 12-item Script Viewer revamp, 20 Oct), checklist `checklists/Tungsten_Revamp_Checklist.md`. Not tested in-game yet.
-- **Offline tests:** 37 suites, all passing in normal and `SHIFT = 58` mode, 3,191 checks each.
+- **Latest build:** `Tungsten_upvalues.zip` (revamp + upvalues fix, 20 Oct), checklists `Tungsten_Revamp_Checklist.md` and `Tungsten_Upvalues_Checklist.md`. Not tested in-game yet.
+- **Offline tests:** 38 suites, all passing in normal and `SHIFT = 58` mode, 3,224 checks each.
 - **The 12-item revamp of the Script Viewer is built** (request and design in `docs/next-request.md`; what was built in `docs/stage-status.md`). Waiting for the user's in-game results.
 - **Web loader:** `loader.luau` at the repo root (see Code map).
 - **No in-game results yet.** None of the Plugins-stage checklists in `checklists/` has been reported back. A reload symptom (P1_5b item D1) is still undescribed.

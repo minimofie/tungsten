@@ -41,12 +41,19 @@
   - Forms: one value field (`scriptviewer_value`): only relevant types + "variable" with a variable picker; Keep in a variable suggests a name.
   - `docs.md` for the Script Viewer; topics 06 and 09 updated.
 
+- **Upvalues fix (20 Oct, user: "the upvalue tab … does not work still … upvalues within tables are not being displayed at all"):**
+  - A script's running functions are also found by `getfenv(fn).script == script` over `getgc` (a cloned, moved script keeps its old source name, so the source match missed it).
+  - A loaded table, and a ModuleScript's returned table, list the upvalues of every Luau function in them (depth 4, 300 functions, 20,000 entries looked at), a heading per function named by its key path; their rows have real paths.
+  - Rows remember the row they are under (`Up`), so Copy path / Inspect give exact code for entries and upvalues at any depth (e.g. `debug.getupvalues(require(M).a)[2].speed`).
+  - Upvalues scope **Search all functions**: every game function from `getgc` (executor ones left out) whose upvalues match the text (text contains, numbers, function and object names), optionally inside tables (matching entries under the table); results can be changed, and are read again after a change.
+  - A table's summary counts its functions.
+
 ## Stage 5 decisions (P1–P10)
 - P1/P3 on/off at the next start. P2 ships no plugins except primes. P4 depend only on primes (`Requires` / `Uses`). P5 faults reported and counted, never auto-off. P6/P7 only preferences persist; Reset all leaves plugins alone. P8 plugins may use the whole folder. P9 reload for a plugin with a problem. P10 one side-bar tab per plugin; views are sub-tabs. No `api.data`. Variables: flat names with an owner.
 - Work in small stages, stopping at clean points to confirm.
 
 ## Numbers
-- Offline tests, all passing in normal and SHIFT = 58 mode: 3,191 each in 37 suites (… + P1a 55, P1b 41, P1c 33, P1d 42, P1e 25, P1f 48, P1g 88, pathback 26, access 44, loader 53, pathreload 48, svviews 33, svinspect 19, svfunctions 44, svforms 29).
+- Offline tests, all passing in normal and SHIFT = 58 mode: 3,224 each in 38 suites (… + P1a 55, P1b 41, P1c 33, P1d 42, P1e 25, P1f 48, P1g 88, pathback 26, access 44, loader 53, pathreload 48, svviews 33, svinspect 19, svfunctions 44, svforms 29, svupvalues 33).
 - The test harness sets the shipped prime plugins aside for older suites; suites that test them call `H.keepPrimes()`.
 - Package: `python3 tools/make_manifest.py Tungsten`, `python3 tools/make_release.py`, then `python3 tools/package.py <out.zip>`.
 - Web loader (20 Oct): `loader.luau` + `release.txt` at the repo root; `test_loader` (53).

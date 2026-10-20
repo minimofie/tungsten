@@ -55,12 +55,15 @@ View.Actions = Actions
 View.Panels = {
 	{ Id = "source", Title = "Source", Icon = "console" },
 	{ Id = "constants", Title = "Constants", Icon = "type_number", Data = true, Setting = "constantsView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "constantsScope" },
-	{ Id = "upvalues", Title = "Upvalues", Icon = "variable", Data = true, Setting = "upvaluesView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "upvaluesScope" },
+	{ Id = "upvalues", Title = "Upvalues", Icon = "variable", Data = true, Setting = "upvaluesView", Modes = { "Tree", "List", "Table" }, Refs = true, Scope = "upvaluesScope", Scopes = { "This function", "With nested functions", "Search all functions" } },
 	{ Id = "functions", Title = "Functions", Icon = "type_function", Data = true, Setting = "functionsView", Modes = { "Tree", "List", "Table" } },
 	{ Id = "contents", Title = "Contents", Icon = "type_table", Data = true, Setting = "contentsView", Modes = { "Tree", "List", "Table" }, Refs = true },
 }
 View.Modes = { "Tree", "List", "Table" }
 View.Scopes = { "This function", "With nested functions" }
+-- Upvalues has one more: every game function whose upvalues match a search
+View.UpvalueScopes = { "This function", "With nested functions", "Search all functions" }
+local SCAN = View.UpvalueScopes[3]
 -- the List view's type filter
 View.TypeFilters = { "Any type", "string", "number", "boolean", "table", "function", "Instance", "other" }
 local KNOWN_TYPES = { string = true, number = true, boolean = true, table = true, ["function"] = true, Instance = true }
@@ -184,8 +187,9 @@ end
 -- The scope of Constants / Upvalues, from the plugin's settings.
 function View:_scope(id: string): string
 	local key = PANEL[id].Scope
+	local scopes = PANEL[id].Scopes or View.Scopes
 	local value = if key then setting(self.Api, key) else nil
-	return if table.find(View.Scopes, value) then value else View.Scopes[1]
+	return if table.find(scopes, value) then value else scopes[1]
 end
 
 local function nested(panel): boolean
@@ -225,7 +229,7 @@ function View:_buildDataPanel(id: string, holder: Frame)
 			Parent = layout.Toolbar,
 			Name = "Scope",
 			Width = 170,
-			Options = View.Scopes,
+			Options = def.Scopes or View.Scopes,
 			Value = panel.Scope,
 			OnChanged = function(value)
 				self:SetScope(id, value)
@@ -343,6 +347,43 @@ function View:_buildDataPanel(id: string, holder: Frame)
 	})
 	panel.TypeSwitch.Instance.LayoutOrder = 2
 	panel.Count = api.ui.new("Label", { Parent = filterRow, Name = "Count", Text = "", Style = "muted", Size = UDim2.new(0, 200, 1, 0) })
+	if def.Scopes and table.find(def.Scopes, SCAN) then
+		-- "Search all functions": what to look for, inside tables too, Search
+		local scanRow = Instance.new("Frame")
+		scanRow.Name = "Scan"
+		scanRow.BackgroundTransparency = 1
+		scanRow.Position = UDim2.fromOffset(12, PAD)
+		scanRow.Size = UDim2.new(1, -24, 0, FILTER_ROW)
+		scanRow.Visible = false
+		scanRow.Parent = canvas
+		panel.ScanRow = scanRow
+		local scanLayout = filterLayout:Clone()
+		scanLayout.Parent = scanRow
+		panel.ScanBox = api.ui.new("Input", {
+			Parent = scanRow,
+			Name = "Query",
+			Width = 260,
+			Placeholder = "text, a number, a function's or object's name",
+			Text = "",
+			OnCommit = function()
+				self:ScanUpvalues(id)
+			end,
+		})
+		panel.ScanBox.Instance.LayoutOrder = 1
+		panel.ScanTables = api.ui.new("Toggle", { Parent = scanRow, Name = "Tables", Text = "Search inside tables", Value = false })
+		panel.ScanTables.Instance.LayoutOrder = 2
+		panel.ScanButton = api.ui.new("Button", {
+			Parent = scanRow,
+			Name = "Search",
+			Text = "Search",
+			Icon = "search",
+			Style = "accent",
+			OnClick = function()
+				self:ScanUpvalues(id)
+			end,
+		})
+		panel.ScanButton.Instance.LayoutOrder = 3
+	end
 	panel.Count.LayoutOrder = 3
 
 	local holderFrame = Instance.new("Frame")
@@ -414,8 +455,13 @@ function View:_layout(id: string)
 		return
 	end
 	local listMode = panel.Mode == "List"
+	local scanning = panel.ScanRow ~= nil and panel.Scope == SCAN
 	local refs = self:_refsOn(id)
-	local top = PAD + (if listMode then FILTER_ROW + 6 else 0)
+	local top = PAD + (if scanning then FILTER_ROW + 6 else 0) + (if listMode then FILTER_ROW + 6 else 0)
+	if panel.ScanRow then
+		panel.ScanRow.Visible = scanning
+	end
+	panel.FilterRow.Position = UDim2.fromOffset(12, PAD + (if scanning then FILTER_ROW + 6 else 0))
 	local bottom = PAD + (if refs then View.RefsHeight + PAD else 0)
 	local bodyHeight = panel.Body.AbsoluteSize.Y
 	local height = math.max(bodyHeight, top + View.ListMin + bottom)
@@ -563,8 +609,9 @@ function View:SetScope(id: string, scope: string)
 	if not panel or not PANEL[id].Scope then
 		return
 	end
-	if not table.find(View.Scopes, scope) then
-		scope = View.Scopes[1]
+	local scopes = PANEL[id].Scopes or View.Scopes
+	if not table.find(scopes, scope) then
+		scope = scopes[1]
 	end
 	panel.Scope = scope
 	if panel.ScopeSwitch:GetValue() ~= scope then
@@ -575,7 +622,47 @@ function View:SetScope(id: string, scope: string)
 	end
 	table.clear(panel.Expanded)
 	table.clear(panel.Closed)
+	self:_layout(id)
 	self:_schedule(id, false)
+end
+
+-- "Search all functions": looks through every game function's upvalues
+-- for the text in the search box (in a thread; a newer search wins).
+function View:ScanUpvalues(id: string)
+	local panel = self.Panels[id]
+	if not panel or not panel.ScanBox then
+		return
+	end
+	if panel.Scope ~= SCAN then
+		self:SetScope(id, SCAN)
+	end
+	panel.ScanToken = (panel.ScanToken or 0) + 1
+	local token = panel.ScanToken
+	local query = panel.ScanBox:GetText()
+	local tables = panel.ScanTables.Value == true
+	panel.Info.Text = "searching every function…"
+	self.Api.spawn(function()
+		local roots, why, stats = Rows.scanUpvalues(query, {
+			Tables = tables,
+			Yield = function()
+				task.wait()
+			end,
+		})
+		if self.Destroyed or panel.ScanToken ~= token then
+			return
+		end
+		panel.ScanRoots = if why then nil else roots
+		panel.ScanWhy = why
+		panel.ScanStats = stats
+		table.clear(panel.Expanded)
+		table.clear(panel.Closed)
+		self:_fill(id)
+		if not why then
+			local text = ("%s · %d functions looked at%s"):format(panel.Info.Text, stats.Functions, if stats.Capped then (" · first %d shown"):format(Rows.ScanLimit) else "")
+			panel.Info.Text = text
+			panel.InfoFull = text
+		end
+	end)
 end
 
 ----------------------------------------------------------------------
@@ -698,6 +785,14 @@ function View:_roots(id: string): ({ any }, string?)
 	local subject = self.Subject
 	local panel = self.Panels[id]
 	local wide = panel ~= nil and nested(panel) or (panel == nil and PANEL[id].Scope ~= nil and self:_scope(id) == View.Scopes[2])
+	if id == "upvalues" and panel ~= nil and panel.Scope == SCAN then
+		-- the last search's results, values read again
+		if panel.ScanRoots == nil then
+			return {}, panel.ScanWhy or "type what to look for and press Search: every game function whose upvalues match is listed"
+		end
+		Rows.refreshScan(panel.ScanRoots)
+		return panel.ScanRoots, panel.ScanWhy
+	end
 	if subject == nil or subject.Kind == "none" then
 		return {}, "nothing loaded"
 	end
@@ -716,14 +811,33 @@ function View:_roots(id: string): ({ any }, string?)
 		end
 		return {}, "load a table, or a ModuleScript the game has required"
 	end
+	if id == "upvalues" and subject.Kind == "table" then
+		-- a table's functions and their upvalues, by key path
+		local roots, why = Rows.upvaluesOfTable(subject.Table)
+		return roots, why
+	end
 	if id == "upvalues" and (subject.Kind == "script" or subject.Kind == "module") then
 		-- a script's main function here is a fresh copy with no running
-		-- upvalues: its running functions hold them (nested ones included)
-		local live, why = Rows.liveFunctions(subject)
-		if not live then
-			return {}, why
+		-- upvalues: its running functions hold them (nested ones included).
+		-- A ModuleScript's returned table comes first: its functions by path.
+		local roots, shown = {}, {}
+		if type(subject.Table) == "table" then
+			local inTable
+			inTable, _, shown = Rows.upvaluesOfTable(subject.Table)
+			roots = inTable
 		end
-		return Rows.upvaluesOfFunctions(live)
+		local live, why = Rows.liveFunctions(subject)
+		if live then
+			local others, whyOthers = Rows.upvaluesOfOthers(live, shown)
+			for _, node in others do
+				table.insert(roots, node)
+			end
+			why = whyOthers
+		end
+		if #roots == 0 then
+			return {}, why or "none of its functions has upvalues"
+		end
+		return roots, nil
 	end
 	if id == "upvalues" and subject.Kind == "proto" then
 		-- a prototype has no upvalue values: its running copies do
@@ -1169,6 +1283,10 @@ function View.summary(subject): string
 		end
 	elseif subject.Kind == "table" and facts.entries then
 		table.insert(parts, (tostring(facts.entries):match("^%d+") or "?") .. " entries")
+		local okFns, fns = pcall(Rows.functionsInTable, subject.Table)
+		if okFns and #fns > 0 then
+			table.insert(parts, ("%d %s"):format(#fns, if #fns == 1 then "function" else "functions"))
+		end
 	end
 	if subject.Count > 1 then
 		table.insert(parts, ("%d loaded, showing the first"):format(subject.Count))
