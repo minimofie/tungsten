@@ -1,0 +1,7 @@
+out/
+Tungsten/logs/
+Tungsten/saved/
+Tungsten/base/settings.json
+Tungsten/base/plugins.json
+Tungsten/plugins/*/settings.json
+*.tmp
