@@ -1943,11 +1943,12 @@ function H.keepPrimes()
 	H.FILES["Tungsten/base/data/manifest.luau"] = fullManifest
 end
 
-function H.run(path)
+function H.run(path, ...)
 	local f = assert(loadfileMock(path))
+	local args = table.pack(...)
 	local done, ok, err = false, false, nil
 	local co = coroutine.create(function()
-		ok, err = xpcall(f, debug.traceback)
+		ok, err = xpcall(f, debug.traceback, table.unpack(args, 1, args.n))
 		done = true
 	end)
 	resume(co)

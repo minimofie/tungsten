@@ -5,7 +5,7 @@
 ]]
 
 return {
-	["Tungsten.luau"] = 7271,
+	["Tungsten.luau"] = 7383,
 	["base/access.luau"] = 15829,
 	["base/api.luau"] = 32957,
 	["base/data/api.luau"] = 135767,

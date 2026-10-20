@@ -31,12 +31,13 @@ tools/run_all.sh test_p1g.luau         # one suite, both modes
 python3 tests/build_test.py . tests/test_p1g.luau /tmp/r.luau && luau /tmp/r.luau   # see a stack trace
 ```
 
-Current count: 31 suites × 2 modes, 2,953 checks each.
+Current count: 32 suites × 2 modes, 3,005 checks each.
 
 ## Delivery per round
 
 1. `python3 tools/make_manifest.py Tungsten`. Always do this after changing anything under `Tungsten/`: the integrity check compares file sizes and the suites fail when it's stale.
-2. `python3 tools/package.py out/Tungsten_<round>.zip`, plus a tests zip: `zip -qr out/Tungsten_tests_<round>.zip tests tools`.
-3. Write the checklist. Use `checklists/` as the template: an install line, items with ids, expected results, and what to send on failure.
-4. Send the changed files, both zips and the checklist. Summarize what changed, what wasn't tested in-game, and what's open. Then stop.
-5. Images: draw an SVG and render a PNG (`tools/svg2png.py`, or ImageMagick `-flop` for mirrored icons, keeping RGBA with `PNG32:`).
+2. `python3 tools/make_release.py`. It rewrites `release.txt` (hash, size and path of every shipped file) at the repo root, which the web loader downloads by. `test_loader` fails when it's stale. Commit and push it with the change.
+3. `python3 tools/package.py out/Tungsten_<round>.zip`, plus a tests zip: `zip -qr out/Tungsten_tests_<round>.zip tests tools`.
+4. Write the checklist. Use `checklists/` as the template: an install line, items with ids, expected results, and what to send on failure.
+5. Send the changed files, both zips and the checklist. Summarize what changed, what wasn't tested in-game, and what's open. Then stop.
+6. Images: draw an SVG and render a PNG (`tools/svg2png.py`, or ImageMagick `-flop` for mirrored icons, keeping RGBA with `PNG32:`).

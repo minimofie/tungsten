@@ -28,6 +28,10 @@ Files
                     (require / getsenv paths, found, typed, /load, Copy),
                     the script viewer passing paths on
 - test_pathback.luau  the path bar's back button (base/loaded history)
+- test_loader.luau  the web loader (loader.luau): release.txt is current with
+                    Tungsten/; fresh install, nothing new, update (changed,
+                    same-size, dropped, added, hand-edited files), a failed
+                    download writes nothing, offline, unsafe paths, Run = false
 - test_pathbar.luau the path bar: dropdown, Copy, Highlight, arrow, crumbs and
                     child lists, typing paths, long paths, overrides
 - test_stage4a.luau explorer panel, tree, search, selection and $sel, path bar,
@@ -159,6 +163,10 @@ Added for Stage 5
 - build_test.py also bundles tests/fixtures/plugins/<Folder>/** as
   FILES["fixtures/plugins/<Folder>/<file>"]; the suites copy what they need
   into Tungsten/plugins/.
+- build_test.py also bundles the repo root's loader.luau and release.txt as
+  FILES["loader.luau"] / FILES["release.txt"]. H.run(path, ...) passes extra
+  arguments to the chunk (the loader's options). request() has no stand-in:
+  test_loader sets E_.request to serve a stand-in repository.
 - H.clickObjectLeft(obj, button?, inset?) clicks near the left end of a wide
   row (the mock doesn't clip; the engine does).
 - Run every suite in both modes from the folder holding Tungsten/ and tests/:

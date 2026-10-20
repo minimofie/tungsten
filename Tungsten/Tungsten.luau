@@ -3,8 +3,9 @@
 	Main loader — the only file you execute.
 
 	Everything is loaded from the local Tungsten folder in Volt's
-	workspace; nothing is downloaded. Running this again shuts the
-	previous copy down first.
+	workspace; Tungsten downloads nothing itself. (The web loader,
+	loader.luau in the repository, can install or update this folder
+	before it runs.) Running this again shuts the previous copy down first.
 ]]
 
 local ROOT = "Tungsten"

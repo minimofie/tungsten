@@ -8,8 +8,9 @@ files. Run it before packaging:
 import pathlib
 import sys
 
-# Files Tungsten writes while it runs, never shipped.
-SKIP = {"base/settings.json", "base/plugins.json", "base/data/manifest.luau"}
+# Files Tungsten (or the loader, base/installed.txt) writes while it runs,
+# never shipped.
+SKIP = {"base/settings.json", "base/plugins.json", "base/installed.txt", "base/data/manifest.luau"}
 SKIP_FOLDERS = ("logs/", "saved/")
 # The prime plugins Tungsten ships (Plugins stage Q5).
 PRIME_FOLDERS = {"ScriptViewer", "InstanceViewer", "Scanner"}

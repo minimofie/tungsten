@@ -20,6 +20,11 @@ for f in sorted(fixtures.glob("plugins/**/*")):
     if f.is_file():
         rel = f.relative_to(fixtures).as_posix()
         parts.append(f'FILES["fixtures/{rel}"] = [{eq}[{f.read_text()}]{eq}]\n')
+# The web loader and its file list (repo root), as FILES["loader.luau"] and FILES["release.txt"].
+for name in ("loader.luau", "release.txt"):
+    f = root / name
+    if f.is_file():
+        parts.append(f'FILES["{name}"] = [{eq}[{f.read_text()}]{eq}]\n')
 harness = pathlib.Path(__file__).with_name("harness.luau").read_text()
 parts.append("local H = (function()\n" + harness + "\nend)()\n")
 parts.append(test.read_text())

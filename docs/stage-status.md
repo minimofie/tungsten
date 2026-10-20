@@ -37,6 +37,7 @@
 - Work in small stages, stopping at clean points to confirm.
 
 ## Numbers
-- Offline tests, all passing in normal and SHIFT = 58 mode: 2,953 each in 31 suites (… + P1a 55, P1b 41, P1c 33, P1d 33, P1e 25, P1f 48, P1g 85, pathback 26, access 44).
+- Offline tests, all passing in normal and SHIFT = 58 mode: 3,005 each in 32 suites (… + P1a 55, P1b 41, P1c 33, P1d 33, P1e 25, P1f 48, P1g 85, pathback 26, access 44, loader 52).
 - The test harness sets the shipped prime plugins aside for older suites; suites that test them call `H.keepPrimes()`.
-- Package: `python3 tools/make_manifest.py Tungsten` then `python3 tools/package.py <out.zip>`.
+- Package: `python3 tools/make_manifest.py Tungsten`, `python3 tools/make_release.py`, then `python3 tools/package.py <out.zip>`.
+- Web loader (20 Oct): `loader.luau` + `release.txt` at the repo root; `test_loader` (52).

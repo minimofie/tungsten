@@ -3,5 +3,6 @@ Tungsten/logs/
 Tungsten/saved/
 Tungsten/base/settings.json
 Tungsten/base/plugins.json
+Tungsten/base/installed.txt
 Tungsten/plugins/*/settings.json
 *.tmp

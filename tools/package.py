@@ -2,11 +2,11 @@
 """Zips the Tungsten folder for shipping: python3 tools/package.py <out.zip>
 
 Leaves out what Tungsten writes while it runs (logs/, saved/,
-base/settings.json, base/plugins.json, any plugin's settings.json) and
+base/settings.json, base/plugins.json, the loader's base/installed.txt, any plugin's settings.json) and
 plugin folders that aren't the prime plugins Tungsten ships."""
 import pathlib, sys, zipfile
 PRIME_FOLDERS = {"ScriptViewer", "InstanceViewer", "Scanner"}
-SKIP = {"base/settings.json", "base/plugins.json"}
+SKIP = {"base/settings.json", "base/plugins.json", "base/installed.txt"}
 
 def shipped(rel):
     if rel in SKIP or rel.startswith(("logs/", "saved/")):

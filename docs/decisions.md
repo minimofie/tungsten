@@ -20,7 +20,16 @@ Newest first within each section. Where this file and the original handoff disag
 | Q12 | Soft links (`Uses`) and the shared hook dispatcher in P0? | **"Links in P0, hook later":** `Uses` and `api.plugins.open` are in P0; the shared `__namecall` dispatcher waits for round 3b. |
 | Q13 | Spy on C methods: `hookfunction` or `oth.hook`? | **Open**, for round 3b. The proposal is `oth.hook` for remote methods and `hookfunction` for Luau functions. |
 
-## Decisions made during the Plugins stage (18–19 Oct 2026)
+## Decisions made during the Plugins stage (18–20 Oct 2026)
+
+- **Web loader** (20 Oct, "set up the github repo to be loaded via executor loadstring"). `loader.luau` at the repo root is run with `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()`.
+  - It installs or updates `workspace/Tungsten/` from `release.txt` (made by `tools/make_release.py`), downloading only files whose hash changed or that were edited, then runs `Tungsten.luau` from the folder.
+  - Tungsten itself still runs from local files and downloads nothing. That keeps the "everything local" rule for everything after start-up, and `getcustomasset` icons, `listfiles` and plugins keep working.
+  - The loader uses `request`, which has a Volt doc page; `game:HttpGet` has none.
+  - All files are downloaded before any is written, so a failed update leaves the workspace copy as it was and runs it. Offline, it runs the workspace copy.
+  - It writes only listed files plus its record `base/installed.txt`, and deletes only files it installed that a newer list drops. Settings, logs, saved files and other plugins are never touched.
+  - Options: `loadstring(...)({ Branch, Owner, Repo, Run = false })`.
+  - The repository must be public for raw.githubusercontent.com to serve it.
 
 - **Path bar shows paths inside scripts** (19 Oct). A function or table inside a script shows as `script path › require()` (or `getsenv()`) `› keys › value` (`base/access`).
   - The path comes with the load, or is searched for: required modules' tables first, then running scripts' globals.

@@ -15,7 +15,7 @@ The user tests in-game in Volt. You build, run the offline tests, then hand over
     - paths inside scripts (`base/access`)
   - Rounds 2 (`instanceviewer`) and 3 (`scanner`) are not started.
 - **Latest delivered build:** `Tungsten_p1_6d.zip`. This repo's `Tungsten/` folder is identical to it.
-- **Offline tests:** 31 suites, all passing in normal and `SHIFT = 58` mode, 2,953 checks each.
+- **Offline tests:** 32 suites, all passing in normal and `SHIFT = 58` mode, 3,005 checks each.
 - **The next task is a 12-item revamp of the Script Viewer** the user asked for. Nothing of it is implemented yet: a partial start was reverted on request.
   - The request, word for word, and the proposed design are in **`docs/next-request.md`**.
   - Start there. Confirm the plan briefly with the user if anything is ambiguous, then build.
@@ -29,6 +29,7 @@ The user tests in-game in Volt. You build, run the offline tests, then hand over
   - This covers everything under `Tungsten/` and `tests/`.
   - The planning docs in `docs/` quote the user's own words, which name some of them. Never carry those names into the product.
 - Everything local under workspace/Tungsten/ - no downloads at runtime.
+  - Since 20 Oct the user asked for a web loader (`loader.luau`): it may download into `workspace/Tungsten/` before Tungsten starts. Tungsten itself still downloads nothing (`docs/decisions.md`).
 - Images: draw in SVG (send the .svg plus a PNG copy).
 - Follow the conventions and standing decisions in sections 5-6 (now in `docs/handoff-plugins-stage.md` and `docs/decisions.md`).
 - Work in small stages; stop at a clean point after each and wait for me.
@@ -49,6 +50,7 @@ The user's latest request also said: "find a good stopping point and pause if us
 5. Package:
    ```sh
    python3 tools/make_manifest.py Tungsten     # integrity manifest (sizes); rerun after ANY change in Tungsten/
+   python3 tools/make_release.py               # release.txt for the web loader; rerun after make_manifest
    python3 tools/package.py out/Tungsten_<round>.zip
    zip -qr out/Tungsten_tests_<round>.zip tests tools
    ```
@@ -71,11 +73,14 @@ The user's test loop: copy the zip's `Tungsten/` folder into Volt's `workspace/T
   ```
   Use this to see a runtime error's stack.
 - `python3 tools/make_manifest.py Tungsten`: rewrites `Tungsten/base/data/manifest.luau`. The integrity check fails (stage4c, p1a…) if it is stale.
+- `python3 tools/make_release.py`: rewrites `release.txt` at the repo root (`<sha1 12> <size> <path>` per shipped file), which `loader.luau` downloads by. `test_loader` fails if it is stale.
 - `python3 tools/package.py out.zip`: zips what ships. It leaves out `logs/`, `saved/`, `base/settings.json`, `base/plugins.json`, plugin `settings.json` files, and plugin folders other than the primes (`ScriptViewer`, `InstanceViewer`, `Scanner`).
 - `python3 tools/svg2png.py icon.svg`: renders a 64×64 PNG next to an SVG (Playwright Chromium).
   - Icons live in `Tungsten/base/data/icons/` as `name.svg` + `name.png`, drawn white (tinted at runtime).
 
 ## Code map
+
+The **web loader** is `loader.luau` at the repo root: `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()` installs or updates `workspace/Tungsten/` from `release.txt`, then runs it. Options: `({ Branch, Owner, Repo, Run = false })`.
 
 The loader is `Tungsten/Tungsten.luau`. It builds the context `T` (`T.import("base/x")` loads a module once) and sets `T.Access`, `T.Loaded`, `T.Variables`, `T.Explorer`, `T.PathBar`, `T.Console`, `T.Plugins`, `T.Menus`, `T.Undo`, `T.UI`, `T.Tabs` and others.
 
