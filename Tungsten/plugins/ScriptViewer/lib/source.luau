@@ -35,9 +35,12 @@ function Source.scriptFor(subject): (Instance?, string?)
 	end
 	local item = subject.Item
 	local origin = if type(item) == "table" and typeof(item.Origin) == "Instance" then item.Origin else nil
-	if subject.Kind == "function" then
+	if origin == nil and subject.Kind == "proto" and subject.Proto and type(subject.Proto.ScriptSubject) == "table" then
+		origin = subject.Proto.ScriptSubject.Instance -- a nested function of a script's bytecode
+	end
+	if subject.Kind == "function" or subject.Kind == "proto" then
 		if origin then
-			local note = "the script this function came from"
+			local note = if subject.Kind == "proto" then "the script this nested function came from" else "the script this function came from"
 			local line = nil
 			pcall(function()
 				local defined = debug.info(subject.Fn, "l")

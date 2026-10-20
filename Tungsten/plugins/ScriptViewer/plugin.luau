@@ -12,7 +12,9 @@
 		     scope with nested functions (revamp)
 		1.5  references of constants and upvalues (filtergc)
 		1.6  editing: right-click menu + forms, editable Table view, Undo
-		1.7  links from the other plugins, menus, docs
+		1.7  links from the other plugins, menus, docs (docs.md: revamp)
+		revamp: path reload, scrolling work area, Tree / List / Table, scope,
+		     Inspect, Functions with details, nested functions, value field
 
 	Exports (for plugins that list scriptviewer in Requires or Uses):
 		reveal({ Target?, Panel? })  -- load Target (if given) and open Panel
@@ -72,6 +74,7 @@ return {
 	Description = "inspect and change scripts, ModuleScripts, functions and tables",
 	Icon = "type_function",
 	Order = 1,
+	Docs = "docs.md",
 	Settings = {
 		{ Id = "constantsView", Kind = "choice", Text = "Constants view", Hint = "Tree: explore and change in place · List: search and filter, with paths · Table: as a Luau table, bulk changes", Options = { "Tree", "List", "Table" }, Default = "Tree" },
 		{ Id = "upvaluesView", Kind = "choice", Text = "Upvalues view", Options = { "Tree", "List", "Table" }, Default = "Tree" },

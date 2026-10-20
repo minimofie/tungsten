@@ -990,7 +990,7 @@ function View:_render(id: string)
 	local noun = ({ functions = "function", constants = "constant", upvalues = "upvalue", contents = "entry" })[id] or "row"
 	for _, node in rows do
 		if node.Kind == "heading" then
-			node.ValueText = ("%d %s"):format(node.Count or 0, if (node.Count or 0) == 1 then noun elseif noun == "entry" then "entries" else noun .. "s")
+			node.ValueText = if (node.Count or 0) == 0 and node.Note then ("(%s)"):format(node.Note) else ("%d %s"):format(node.Count or 0, if (node.Count or 0) == 1 then noun elseif noun == "entry" then "entries" else noun .. "s")
 		elseif id ~= "functions" then
 			local ok, text = pcall(display, node.Value)
 			node.ValueText = if node.Note then ("(%s)"):format(node.Note) .. (if node.Value ~= nil then " " .. (if ok then text else "?") else "") else (if ok then text else "?")
@@ -1020,7 +1020,7 @@ function View:_render(id: string)
 	local count = View.count(roots)
 	local plural = if count == 1 then noun elseif noun == "entry" then "entries" else noun .. "s"
 	local text = if panel.Why then panel.Why else ("%d %s"):format(count, plural)
-	if hasHeadings and not panel.Why then
+	if hasHeadings and not panel.Why and id ~= "functions" then
 		text ..= (" · %d %s"):format(#roots, if #roots == 1 then "function" else "functions")
 	end
 	if capped then

@@ -645,7 +645,9 @@ function Actions.inspect(view, node, opts: { [string]: any }?): boolean
 	else
 		local access = Actions.accessOf(api, view.Subject, node)
 		local info = if typeof(value) == "ProtoProxy" then Actions.protoOrigin(view, node) else nil
-		api.loaded.set(api.loaded.target(value, { Label = describe(node), Access = access, Info = info }))
+		-- a function row's label is its name (its path is a row number)
+		local label = if node.Kind == "proto" or node.Kind == "function" then tostring(node.Key) else describe(node)
+		api.loaded.set(api.loaded.target(value, { Label = label, Access = access, Info = info }))
 	end
 	local wants = if opts and opts.Tab ~= nil then opts.Tab else tabFor(value, current)
 	if wants and not view.Destroyed and view.Tabs.Selected ~= wants then

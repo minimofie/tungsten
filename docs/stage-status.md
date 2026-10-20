@@ -1,10 +1,10 @@
 # Tungsten — stage status
 
-**Current:** Plugins stage, round 1 (`scriptviewer`) parts 1.1–1.6 built (19 Oct 2026; `Tungsten_p1_6d.zip`). Round P0 built; its in-game checklists (P0a 28, P0b 12, P0c 8) and the round 1 checklists (1.1 16, 1.2 14, 1.3 13, 1.4 11, 1.5 10, fixes 12, 1.6 16, 1.6b 8, back button 8, script paths 10) are still to be run; the reload symptom (fixes D1) is still to be described. **Next:** 1.7 links / menus / docs; then round 2 `instanceviewer`, round 3 `scanner` (plan: the "Tungsten — Plugins Stage Plan" doc), then Stage 6.
+**Current:** Plugins stage, round 1 (`scriptviewer`) parts 1.1–1.6 built, plus the 12-item **revamp** (20 Oct 2026; `Tungsten_revamp.zip`, checklist `Tungsten_Revamp_Checklist.md`) and the web loader. Round P0 built; its in-game checklists (P0a 28, P0b 12, P0c 8) and the round 1 checklists (1.1 16, 1.2 14, 1.3 13, 1.4 11, 1.5 10, fixes 12, 1.6 16, 1.6b 8, back button 8, script paths 10) are still to be run; the reload symptom (fixes D1) is still to be described. **Next:** 1.7 links / menus / docs; then round 2 `instanceviewer`, round 3 `scanner` (plan: the "Tungsten — Plugins Stage Plan" doc), then Stage 6.
 
 ## The user's list (new_list_for_tungsten.txt) — keep every round aligned to it
 - Changes: one loaded thing for every tab (done, P0a); plugin sub-tabs in the main UI's style (done, P0b).
-- Script/module viewer: show upvalues, constants and their references (shown: 1.2; references: 1.5); easily change constants and upvalues (done, 1.6: right-click menu + dropdown forms, Table view Apply); view modes such as table, function, list (1.4: Tree, List, Table, Function).
+- Script/module viewer: show upvalues, constants and their references (shown: 1.2; references: 1.5); easily change constants and upvalues (done, 1.6: right-click menu + dropdown forms, Table view Apply); view modes such as table, function, list (1.4; revamp: Tree to explore, List to search and filter, Table for bulk changes; the Function view became the scope "With nested functions").
 - Universal scanner/spy: scans watched things (Q9 open), universal scanning modes, GC connections scanner/spy, scanner features after the scanner suite, spy features after the spy (round 3).
 - Instance viewer/editor: 3D view (n/a when not an object), attributes, expanded properties, edit properties here, links into the script viewer / scanner, a good overview of the selected instance (round 2).
 
@@ -32,12 +32,21 @@
 - **Back button (19 Oct, user request):** ← right of the path bar's ⌄ button; `base/loaded` remembers every load and clear (50, no repeats, destroyed Instances skipped): `Loaded.back / canGoBack / previous / history / clearHistory`, `api.loaded.back / canGoBack / previous`. Greyed when nothing to go back to; tooltip "Back to …". Icon `arrow_left` (svg + png).
 - **Paths inside scripts (19 Oct, user request):** `base/access` (T.Access) — a value is reached as `require(module)` / `getsenv(script)` + keys + `debug.getupvalues(…)[n]`; targets carry `Access`; the path bar shows script path › require() › keys › value (found when not given: required modules' tables, then running scripts' globals, BFS 5 deep, budget 20,000, cached), step crumbs load that table, Copy = code, Highlight = script; typed paths and `/load` parse it (walked, never run; unrequired modules refused); Script Viewer Look into it passes the path; `api.loaded.access`.
 
+- **Revamp (20 Oct, user's 12 items):**
+  - Path bar: ⟳ reload button right of → (`Loaded.reload`: values inside scripts read again, not remembered for back); typed `$name`; `base/access` steps for nested functions `debug.getproto(f, n)` and running copies `debug.getproto(f, n, true)[k]` (integrity 51).
+  - Data sub-tabs: a scrolling work area (list ≥ 420 px), References as a toggle (off by default), views Tree / List (search + type filter + "N of M") / Table (capped at 20,000 entries), scope This function / With nested functions on Constants and Upvalues; view and scope switches deferred and guarded (item 2).
+  - Menus: **Inspect** replaces Look into it (tables, functions, nested functions, Instances; opens the sub-tab that fits); Copy path only when Inspect applies and code reaches the value.
+  - Functions: running functions + In the bytecode for scripts, nested functions for functions; Line column; details pane (facts, Inspect, Load, Running copy…, Keep in a variable…, Copy path, Copy hash).
+  - Nested functions as subjects (kind "proto"): constants through the ProtoProxy, Upvalues = running copies (editable), Functions = its nested ones; from a script's bytecode copy: matched to the script's running functions.
+  - Forms: one value field (`scriptviewer_value`): only relevant types + "variable" with a variable picker; Keep in a variable suggests a name.
+  - `docs.md` for the Script Viewer; topics 06 and 09 updated.
+
 ## Stage 5 decisions (P1–P10)
 - P1/P3 on/off at the next start. P2 ships no plugins except primes. P4 depend only on primes (`Requires` / `Uses`). P5 faults reported and counted, never auto-off. P6/P7 only preferences persist; Reset all leaves plugins alone. P8 plugins may use the whole folder. P9 reload for a plugin with a problem. P10 one side-bar tab per plugin; views are sub-tabs. No `api.data`. Variables: flat names with an owner.
 - Work in small stages, stopping at clean points to confirm.
 
 ## Numbers
-- Offline tests, all passing in normal and SHIFT = 58 mode: 3,005 each in 32 suites (… + P1a 55, P1b 41, P1c 33, P1d 33, P1e 25, P1f 48, P1g 85, pathback 26, access 44, loader 52).
+- Offline tests, all passing in normal and SHIFT = 58 mode: 3,190 each in 37 suites (… + P1a 55, P1b 41, P1c 33, P1d 42, P1e 25, P1f 48, P1g 88, pathback 26, access 44, loader 52, pathreload 48, svviews 33, svinspect 19, svfunctions 44, svforms 29).
 - The test harness sets the shipped prime plugins aside for older suites; suites that test them call `H.keepPrimes()`.
 - Package: `python3 tools/make_manifest.py Tungsten`, `python3 tools/make_release.py`, then `python3 tools/package.py <out.zip>`.
 - Web loader (20 Oct): `loader.luau` + `release.txt` at the repo root; `test_loader` (52).

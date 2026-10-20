@@ -1,6 +1,6 @@
 # Next task: the Script Viewer revamp (12 items)
 
-**Status: not started.** The work was begun and then the user asked to "undo any partial edits you just made". The only change, nested-function steps in `base/access.luau`, was reverted, and the tree is identical to `Tungsten_p1_6d.zip`.
+**Status: built (20 Oct 2026)** in six steps, each committed with every suite green; delivered as `Tungsten_revamp.zip` with `checklists/Tungsten_Revamp_Checklist.md`. What was built follows the proposed design below; differences: References is a toolbar toggle that is off by default; the variable picker lists every variable for upvalues and entries (a variable is how one changes type) and only constant-shaped ones for constants. Hooks (`hookfunction`, `hookproto`) are left for round 3 (Q13).
 
 ## The request (word for word, 19 Oct 2026)
 

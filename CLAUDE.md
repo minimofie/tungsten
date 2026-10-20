@@ -14,11 +14,10 @@ The user tests in-game in Volt. You build, run the offline tests, then hand over
     - path bar back button
     - paths inside scripts (`base/access`)
   - Rounds 2 (`instanceviewer`) and 3 (`scanner`) are not started.
-- **Latest delivered build:** `Tungsten_p1_6d.zip`. This repo's `Tungsten/` folder is identical to it.
-- **Offline tests:** 32 suites, all passing in normal and `SHIFT = 58` mode, 3,005 checks each.
-- **The next task is a 12-item revamp of the Script Viewer** the user asked for. Nothing of it is implemented yet: a partial start was reverted on request.
-  - The request, word for word, and the proposed design are in **`docs/next-request.md`**.
-  - Start there. Confirm the plan briefly with the user if anything is ambiguous, then build.
+- **Latest build:** `Tungsten_revamp.zip` (the 12-item Script Viewer revamp, 20 Oct), checklist `checklists/Tungsten_Revamp_Checklist.md`. Not tested in-game yet.
+- **Offline tests:** 37 suites, all passing in normal and `SHIFT = 58` mode, 3,190 checks each.
+- **The 12-item revamp of the Script Viewer is built** (request and design in `docs/next-request.md`; what was built in `docs/stage-status.md`). Waiting for the user's in-game results.
+- **Web loader:** `loader.luau` at the repo root (see Code map).
 - **No in-game results yet.** None of the Plugins-stage checklists in `checklists/` has been reported back. A reload symptom (P1_5b item D1) is still undescribed.
 
 ## Rules from the user (word for word from the handoff, still in force)
@@ -89,12 +88,12 @@ The loader is `Tungsten/Tungsten.luau`. It builds the context `T` (`T.import("ba
   - API: `Loaded.load(items, {By})`, `clear`, `get`, `list`, `value(s)`, `target(value, {Kind, Label, Origin, Access})`, `Changed(items, by)`.
   - History for the back button: `back`, `canGoBack`, `previous`, `history`, `clearHistory` (50 entries, no repeats, destroyed Instances skipped).
   - Every tab's `OnLoad(values, tab, items)` runs, the open tab first.
-- `access.luau`: how a value inside a script is reached: `require(module)` or `getsenv(script)` root, then key steps and `debug.getupvalues(…)[n]` steps.
+- `access.luau`: how a value inside a script is reached: `require(module)` or `getsenv(script)` root, then key, upvalue, proto (nested function) and closure (running copy) steps.
   - API: `code`, `crumbs`, `parse` (only walks, never runs; refuses unrequired modules), `resolve`, `find` (breadth-first search over required modules' tables, then running scripts' globals; depth 5; budget 20,000; cached), `findFrom`, `root`, `key`, `upvalue`, `prefix`.
 - `ui/pathbar.luau`: the path bar.
-  - Buttons left to right: ⌄ menu (fixed: Copy and Highlight only), ← back, the field (crumbs, or a text box when clicked), → go.
+  - Buttons left to right: ⌄ menu (fixed: Copy and Highlight only), ← back, the field (crumbs, or a text box when clicked), → go, ⟳ reload (`Loaded.reload`).
   - Values inside scripts show as `script › require() › key › … › value`; Copy gives the code.
-  - Typed paths and `/load` accept `require(…)`, `getsenv(…)` and `debug.getupvalues(…)[n]`.
+  - Typed paths and `/load` accept `require(…)`, `getsenv(…)`, `debug.getupvalues(…)[n]`, `debug.getproto(…, n)`, `debug.getproto(…, n, true)[k]`; the path bar also takes `$name`.
 - `api.luau`: the plugin api.
   - Includes `api.loaded` (with `access`, `back`, `canGoBack`, `previous`), `api.plugins` (`get`, `open`, `isOn`), `api.ui` (`new`, `page`, `subtabs`…), `api.prompt` (`confirm`, `input`, `form`, `registerFieldKind`…), `api.menus`, `api.undo`, `api.variables`, `api.types`, `api.settings`, `api.tooltip`, `api.connect`, `api.spawn`.
 - `plugins.luau`: the plugin host. `Plugins.Prime = { "scriptviewer", "instanceviewer", "scanner" }`; primes ship in `Tungsten/plugins/<Folder>/` and start off; supports `Uses` and `Requires`.
@@ -112,20 +111,21 @@ The loader is `Tungsten/Tungsten.luau`. It builds the context `T` (`T.import("ba
 
 **Script Viewer (`Tungsten/plugins/ScriptViewer/`)**
 - `plugin.luau`: definition, settings and exports.
-  - Settings: `constantsView`, `upvaluesView`, `functionsView`, `contentsView`, `showEmpty`, `constantAnyType`.
+  - Settings: `constantsView`, `upvaluesView`, `functionsView`, `contentsView` (Tree / List / Table), `constantsScope`, `upvaluesScope`, `showReferences`, `showEmpty`, `constantAnyType`. Docs page `docs.md`.
   - Exports: `reveal({Target, Panel})`, `subject()`, `view()`.
-- `lib/inspect.luau`: works out what a loaded item is: script, module, function, table or value (`Inspect.subject`).
+- `lib/inspect.luau`: works out what a loaded item is: script, module, function, proto (a nested function, ProtoProxy), table or value (`Inspect.subject`).
 - `lib/rows.luau`: tree nodes for Constants, Upvalues, Functions and Contents.
   - `liveFunctions(subject)` finds a script's running functions. It tries `filtergc` by Environment, then `filtergc` by Source with a re-check, then `getgc` by source name.
 - `lib/view.luau`: the tab UI.
   - Sub-tabs: Source (first), Constants, Upvalues, Functions, Contents.
-  - Each data sub-tab has a mode dropdown, Apply/Revert (Table mode), Add entry (Contents) and a References area.
+  - Each data sub-tab has a view dropdown (Tree / List / Table), a scope (Constants, Upvalues), Apply/Revert (Table), Add entry (Contents), a References toggle, and a scrolling work area. Switches are deferred and guarded (`_schedule`).
+- `lib/details.luau`: the Functions sub-tab's details pane.
 - `lib/edit.luau`: writes values.
   - Constants via `debug.setconstant`. A script's constants go to its running functions with the same `getfunctionhash` and constants, and are refused when nothing runs.
   - Upvalues via `debug.setupvalue`; entries via `rawset`.
   - Read-only tables are unlocked only after a confirm, then locked again (Q10).
   - The Table text is applied as a diff (KEEP sentinel, all or none).
-- `lib/actions.luau`: the right-click menu `scriptviewer.row` and its forms; every change records an Undo step. `accessOf` passes paths to the path bar.
+- `lib/actions.luau`: the right-click menu `scriptviewer.row` and its forms (value field `scriptviewer_value`: relevant types + variable picker); Inspect, Load, running copies; every change records an Undo step. `accessOf` / `pathOf` give paths.
 - `lib/serialize.luau` (Luau table literal), `lib/refs.luau` (references via `filtergc`), `lib/source.luau` (decompile, cached by script hash).
 
 **Tests (`tests/`)**

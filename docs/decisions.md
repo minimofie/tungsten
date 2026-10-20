@@ -22,6 +22,12 @@ Newest first within each section. Where this file and the original handoff disag
 
 ## Decisions made during the Plugins stage (18–20 Oct 2026)
 
+- **Script Viewer revamp** (20 Oct, the user's 12 items; design in `docs/next-request.md`):
+  - The Function view is gone (it duplicated Tree); its use lives on as the scope "With nested functions". Views: Tree (explore), List (search, type filter), Table (bulk).
+  - References is a toggle, off by default, so the list gets the height.
+  - "Look into it" is **Inspect** everywhere. Copy path shows only where Inspect applies and real code reaches the value (never a row number).
+  - Forms offer only the types that fit, plus "variable" (a picker). Upvalues and entries change type through a variable.
+  - Hooks stay in round 3 (Q13).
 - **Web loader** (20 Oct, "set up the github repo to be loaded via executor loadstring"). `loader.luau` at the repo root is run with `loadstring(request({ Url = "https://raw.githubusercontent.com/minimofie/tungsten/main/loader.luau" }).Body)()`.
   - It installs or updates `workspace/Tungsten/` from `release.txt` (made by `tools/make_release.py`), downloading only files whose hash changed or that were edited, then runs `Tungsten.luau` from the folder.
   - Tungsten itself still runs from local files and downloads nothing. That keeps the "everything local" rule for everything after start-up, and `getcustomasset` icons, `listfiles` and plugins keep working.
