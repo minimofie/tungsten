@@ -1,6 +1,6 @@
 --[[
 	Script Viewer (prime plugin "scriptviewer")
-	Looks into what is loaded: a LocalScript, a ModuleScript, a function
+	Inspects what is loaded: a LocalScript, a ModuleScript, a function
 	or a table. Ships with Tungsten and starts off, like any plugin; turn
 	it on in the Plugins tab.
 
@@ -69,7 +69,7 @@ return {
 	Prime = true,
 	Version = "0.1",
 	Author = "Tungsten",
-	Description = "look into scripts, ModuleScripts, functions and tables",
+	Description = "inspect and change scripts, ModuleScripts, functions and tables",
 	Icon = "type_function",
 	Order = 1,
 	Settings = {

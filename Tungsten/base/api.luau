@@ -680,6 +680,11 @@ function Api.new(id: string, opts: { [string]: any }?)
 		canGoBack = function()
 			return Loaded.canGoBack()
 		end,
+		-- load it again: values inside scripts read again (the reload button)
+		reload = function()
+			live()
+			return Loaded.reload(id)
+		end,
 		previous = function()
 			return Loaded.previous()
 		end,
@@ -692,6 +697,10 @@ function Api.new(id: string, opts: { [string]: any }?)
 			root = T.Access.root,
 			key = T.Access.key,
 			upvalue = T.Access.upvalue,
+			proto = T.Access.proto,
+			closure = T.Access.closure,
+			extend = T.Access.extend,
+			crumbs = T.Access.crumbs,
 			code = T.Access.code,
 			parse = T.Access.parse,
 			resolve = T.Access.resolve,

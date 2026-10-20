@@ -115,7 +115,7 @@ local KIND_TEXT = {
 	module = "ModuleScript",
 	["function"] = "function",
 	table = "table",
-	value = "not something to look into",
+	value = "nothing to inspect",
 	none = "",
 }
 
@@ -592,7 +592,7 @@ function View:_buildRefs(id: string, parent: Instance)
 	})
 end
 
--- Loads a function found as a reference, so the viewer looks into it.
+-- Loads a function found as a reference, so the viewer inspects it.
 function View:OpenReference(result)
 	local api = self.Api
 	api.loaded.set(api.loaded.target(result.Fn, { Label = ("function %s"):format(result.Name) }))
@@ -696,7 +696,7 @@ function View:_roots(id: string): ({ any }, string?)
 	end
 	local fn = subject.Fn
 	if fn == nil then
-		return {}, if subject.Kind == "table" then "a table has no " .. id .. " (its entries are in the Contents sub-tab)" else "this has no function to look into"
+		return {}, if subject.Kind == "table" then "a table has no " .. id .. " (its entries are in the Contents sub-tab)" else "this has no function to inspect"
 	end
 	if id == "constants" then
 		if wide then

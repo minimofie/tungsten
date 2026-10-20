@@ -10,6 +10,8 @@
 		Actions.addEntry(view, panelId, t, label)
 		Actions.renameKey(view, panelId, node)
 		Actions.setVariable(view, node)
+		Actions.inspect(view, node)        -- load a row's table, function or Instance
+		Actions.pathOf(view, node) -> code | nil   -- the row's path, when it has one
 		Actions.applyText(view, panelId)   -- the Table view's Apply
 		Actions.parseValue(api, typeName, text) -> ok, value | why
 
@@ -356,15 +358,32 @@ function Actions.subjectAccess(api, subject): any
 	return nil
 end
 
+-- base extended by base/access steps (a heading's Chain).
+local function along(A, base, steps): any
+	local access = base
+	for _, step in steps do
+		access = A.extend(access, step)
+	end
+	return access
+end
+
 function Actions.accessOf(api, subject, node): any
 	local A = api.loaded.access
 	if not A or type(node) ~= "table" then
 		return nil
 	end
 	local base = Actions.subjectAccess(api, subject)
+	-- steps from the loaded function hold only when a function is loaded
+	-- (a script's main function is a copy no path reaches)
+	local fromFunction = base ~= nil and subject ~= nil and subject.Kind == "function"
+	if node.Kind == "heading" and type(node.Chain) == "table" and fromFunction then
+		return along(A, base, node.Chain)
+	end
 	if node.Kind == "upvalue" and node.Owner ~= nil and type(node.Index) == "number" then
 		local owner = nil
-		if base and subject and rawequal(node.Owner, subject.Fn) and subject.Kind == "function" then
+		if fromFunction and type(node.OwnerChain) == "table" then
+			owner = along(A, base, node.OwnerChain)
+		elseif fromFunction and rawequal(node.Owner, subject.Fn) then
 			owner = base
 		else
 			local ok, found = pcall(A.find, node.Owner)
@@ -382,6 +401,72 @@ function Actions.accessOf(api, subject, node): any
 	end
 	local ok, found = pcall(A.find, node.Value)
 	return if ok then found else nil
+end
+
+----------------------------------------------------------------------
+-- Inspect and Copy path
+----------------------------------------------------------------------
+
+-- Can a row's value be inspected (loaded so the viewer shows it)?
+function Actions.inspectable(node): boolean
+	if type(node) ~= "table" or node.Kind == "more" then
+		return false
+	end
+	local kind = typeof(node.Value)
+	return kind == "table" or kind == "function" or kind == "Instance" or kind == "ProtoProxy"
+end
+
+-- The sub-tab that fits a value: the open one when it applies.
+local FUNCTION_TABS = { constants = true, upvalues = true, functions = true, source = true }
+local function tabFor(value: any, current: string?): string?
+	local kind = typeof(value)
+	if kind == "table" then
+		return "contents"
+	elseif kind == "function" or kind == "ProtoProxy" then
+		return if current and FUNCTION_TABS[current] and current ~= "source" then current else "constants"
+	end
+	return nil
+end
+Actions.tabFor = tabFor
+
+-- Loads a row's table, function or Instance (its path goes to the path
+-- bar) and opens the sub-tab that fits it.
+function Actions.inspect(view, node): boolean
+	local api = view.Api
+	if not Actions.inspectable(node) then
+		return false
+	end
+	local value = node.Value
+	if typeof(value) == "Instance" then
+		api.loaded.set(value)
+	else
+		local access = Actions.accessOf(api, view.Subject, node)
+		api.loaded.set(api.loaded.target(value, { Label = describe(node), Access = access }))
+	end
+	local wants = tabFor(value, view.Tabs and view.Tabs.Selected)
+	if wants and not view.Destroyed and view.Tabs.Selected ~= wants then
+		view:Select(wants)
+	end
+	return true
+end
+
+-- A row's path as code: an Instance's path, or how the value is reached
+-- inside a script (base/access). Only for values Inspect can load.
+function Actions.pathOf(view, node): string?
+	if not Actions.inspectable(node) then
+		return nil
+	end
+	local api = view.Api
+	if typeof(node.Value) == "Instance" then
+		local ok, path = pcall(api.types.path, node.Value)
+		return if ok and type(path) == "string" then path else nil
+	end
+	local access = Actions.accessOf(api, view.Subject, node)
+	if access == nil then
+		return nil
+	end
+	local ok, code = pcall(api.loaded.access.code, access)
+	return if ok then code else nil
 end
 
 ----------------------------------------------------------------------
@@ -482,19 +567,16 @@ function Actions.define(api, getView)
 			end,
 		},
 		{
-			Id = "load",
+			Id = "inspect",
 			Section = "use",
 			Order = 10,
-			Text = "Look into it",
+			Text = "Inspect",
 			Icon = "arrow_right",
 			When = function(ctx)
-				local node = ctx.Item
-				return type(node) == "table" and (typeof(node.Value) == "function" or typeof(node.Value) == "table") and node.Kind ~= "proto"
+				return Actions.inspectable(ctx.Item)
 			end,
 			Callback = function(ctx)
-				local node = ctx.Item
-				local access = Actions.accessOf(api, (view(ctx) or {}).Subject, node)
-				api.loaded.set(api.loaded.target(node.Value, { Label = describe(node), Access = access }))
+				Actions.inspect(view(ctx), ctx.Item)
 			end,
 		},
 		{
@@ -534,12 +616,21 @@ function Actions.define(api, getView)
 			Order = 40,
 			Text = "Copy path",
 			Icon = "copy",
+			-- only where Inspect applies and a real path exists (code that
+			-- reaches it), never a row number
 			When = function(ctx)
-				return type(ctx.Item) == "table" and type(ctx.Item.Path) == "string" and ctx.Item.Path ~= ""
+				local v = view(ctx)
+				return v ~= nil and Actions.pathOf(v, ctx.Item) ~= nil
 			end,
 			Callback = function(ctx)
-				if pcall(setclipboard, ctx.Item.Path) then
-					api.console.success("copied " .. ctx.Item.Path)
+				local path = Actions.pathOf(view(ctx), ctx.Item)
+				if not path then
+					return
+				end
+				if pcall(setclipboard, path) then
+					api.console.success("copied " .. path)
+				else
+					api.console.error("couldn't copy: the clipboard isn't available")
 				end
 			end,
 		},

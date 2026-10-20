@@ -1,7 +1,7 @@
 version 0.4.0
 3bd90b07ff2c 7383 Tungsten.luau
 eccdf5a30128 20157 base/access.luau
-deb0efc13aba 32957 base/api.luau
+936ad2de810b 33213 base/api.luau
 68f20e444902 135767 base/data/api.luau
 427abab3d43e 8780 base/data/categories.luau
 fcaa03efff2e 8536 base/data/classes.luau
@@ -160,7 +160,7 @@ ea31539add82 252 base/data/icons/type_vector.svg
 d290de6672a2 1178 base/data/icons/variable.png
 07ce11ab3752 317 base/data/icons/variable.svg
 324a1b1a36b6 7125 base/data/icons.luau
-49b5a4439989 11090 base/data/manifest.luau
+44ea76b9b90b 11090 base/data/manifest.luau
 bf60bc105544 2830 base/datastore.luau
 cfd4e4d2b0c3 27044 base/explorer/actions.luau
 45d626bf4cf4 11534 base/explorer/api.luau
@@ -247,17 +247,17 @@ ff1b428ec6be 18951 documentation/documentation.luau
 f1ffe8615509 3048 documentation/topics/03_commands.md
 27e8a56d8dca 7566 documentation/topics/04_variables.md
 184828cacf16 4239 documentation/topics/05_errors.md
-19ecbc454fe3 23441 documentation/topics/06_explorer.md
+f8e6f5c32e3e 23436 documentation/topics/06_explorer.md
 38a934a460c8 6785 documentation/topics/07_menus.md
 3cea6af9445f 16218 documentation/topics/08_ui.md
-5cb44ccb44ae 18176 documentation/topics/09_plugins.md
-dd8267cb07be 16963 plugins/ScriptViewer/lib/actions.luau
-583da2d5072b 17787 plugins/ScriptViewer/lib/edit.luau
-f67586b4ebf5 12745 plugins/ScriptViewer/lib/inspect.luau
+98a94d0461c8 18349 documentation/topics/09_plugins.md
+12a33f99abfa 19973 plugins/ScriptViewer/lib/actions.luau
+5a21a4aab1fb 17777 plugins/ScriptViewer/lib/edit.luau
+9a0b88407008 12735 plugins/ScriptViewer/lib/inspect.luau
 41060032c80a 3974 plugins/ScriptViewer/lib/refs.luau
-3429368d8af2 22419 plugins/ScriptViewer/lib/rows.luau
+cee34cc4b673 22648 plugins/ScriptViewer/lib/rows.luau
 7eaa0c3b5664 7088 plugins/ScriptViewer/lib/serialize.luau
 b10966f578c9 2705 plugins/ScriptViewer/lib/source.luau
-e81d159714ae 37344 plugins/ScriptViewer/lib/view.luau
-63fac02dfcf4 5891 plugins/ScriptViewer/plugin.luau
+4c66b46ac4b5 37332 plugins/ScriptViewer/lib/view.luau
+15007526667e 5898 plugins/ScriptViewer/plugin.luau
 8026d0a01fa7 48352 plugins/manager.luau

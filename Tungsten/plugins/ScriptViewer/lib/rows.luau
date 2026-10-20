@@ -12,7 +12,8 @@
 		Rows.upvaluesWithNested(fn) -> headings: fn's upvalues, then those of the
 		                          running copies of its nested functions
 		Rows.upvaluesOfFunctions(list) -> headings: a script's running functions
-		A heading's Chain: base/access steps from fn to its function.
+		A heading's Chain: base/access steps from fn to its function; the rows
+	under it have the same steps as OwnerChain.
 		Rows.plain(kind, source)  -> the plain value the Table view writes
 		Rows.tree(roots, expanded)   -> visible rows, children of expanded nodes
 		Rows.flat(roots, opts)       -> every row down to opts.Depth (List view)
@@ -178,7 +179,7 @@ end
 function Rows.constants(fn: any, opts: { [string]: any }?): ({ any }, string?)
 	local o = opts or {}
 	if fn == nil then
-		return {}, "nothing to look into"
+		return {}, "nothing to inspect"
 	end
 	if Inspect.isC(fn) then
 		return {}, "a C function has no constants"
@@ -213,7 +214,7 @@ end
 
 function Rows.upvalues(fn: any, opts: { [string]: any }?): ({ any }, string?)
 	if fn == nil then
-		return {}, "nothing to look into"
+		return {}, "nothing to inspect"
 	end
 	if Inspect.isC(fn) then
 		return {}, "a C function's upvalues can't be read"
@@ -281,7 +282,7 @@ end
 
 function Rows.functions(fn: any, opts: { [string]: any }?): ({ any }, string?)
 	if fn == nil then
-		return {}, "nothing to look into"
+		return {}, "nothing to inspect"
 	end
 	if Inspect.isC(fn) then
 		return {}, "a C function has no nested functions"
@@ -354,7 +355,7 @@ end
 -- Constants: the function's own, then every nested function's (depth first).
 function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 	if fn == nil then
-		return {}, "nothing to look into"
+		return {}, "nothing to inspect"
 	end
 	if Inspect.isC(fn) then
 		return {}, "a C function has no constants"
@@ -368,6 +369,9 @@ function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 		prefix(rows, id, path)
 		local node = heading(id, target, path, rows)
 		node.Chain = chain
+		for _, row in rows do
+			row.OwnerChain = chain
+		end
 		table.insert(out, node)
 		local ok, protos = call("debug.getprotos", target)
 		if ok and type(protos) == "table" then
@@ -394,7 +398,7 @@ end
 -- steps), so its path can be shown and copied.
 function Rows.upvaluesWithNested(fn: any): ({ any }, string?)
 	if fn == nil then
-		return {}, "nothing to look into"
+		return {}, "nothing to inspect"
 	end
 	if typeof(fn) ~= "ProtoProxy" and Inspect.isC(fn) then
 		return {}, "a C function's upvalues can't be read"
@@ -405,6 +409,9 @@ function Rows.upvaluesWithNested(fn: any): ({ any }, string?)
 		prefix(own, "f", "main")
 		local first = heading("f", fn, "main", own)
 		first.Chain = {}
+		for _, row in own do
+			row.OwnerChain = first.Chain
+		end
 		table.insert(out, first)
 	end
 	local seen = { [fn] = true }
@@ -431,6 +438,9 @@ function Rows.upvaluesWithNested(fn: any): ({ any }, string?)
 						local myChain = table.clone(chain)
 						table.insert(myChain, { Kind = "closure", Index = index, Copy = copyIndex })
 						node.Chain = myChain
+						for _, row in rows do
+							row.OwnerChain = myChain
+						end
 						table.insert(out, node)
 					end
 				end
@@ -594,7 +604,7 @@ function Rows.plain(kind: string, source: any): (any, string?)
 		return source, nil
 	end
 	if source == nil then
-		return nil, "nothing to look into"
+		return nil, "nothing to inspect"
 	end
 	if Inspect.isC(source) then
 		return nil, "a C function has nothing to write here"

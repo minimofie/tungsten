@@ -8,8 +8,8 @@
 		local subject = Inspect.subject(item, count)   -- item: Instance or a loaded target
 		subject.Kind     "script" | "module" | "function" | "table" | "value" | "none"
 		subject.Title    what it is called      subject.Icon   an icon name
-		subject.Fn       the function to look into (a script's main function)
-		subject.Table    the table to look into (a module's returned table)
+		subject.Fn       the function to inspect (a script's main function)
+		subject.Table    the table to inspect (a module's returned table)
 		subject.Facts    { { Id, Text, Value, Hint? } } in Overview order
 		subject.Notes    { text } things the Overview says under the facts
 
@@ -224,7 +224,7 @@ local function addScriptFacts(subject, script: Instance, notes: { string })
 	if okHash and short(hash) then
 		table.insert(facts, { Id = "hash", Text = "Hash", Value = short(hash), Full = hash, Hint = "SHA-384 of its bytecode" })
 	elseif okHash then
-		table.insert(notes, "it has no bytecode (nothing to decompile or look into)")
+		table.insert(notes, "it has no bytecode (nothing to decompile or inspect)")
 	end
 	if subject.Kind == "module" then
 		local okList, modules = call("getloadedmodules")
@@ -314,7 +314,7 @@ function Inspect.subject(item: any, total: number?)
 			subject.Kind = "value"
 			subject.Icon = "object"
 			table.insert(subject.Facts, { Id = "class", Text = "Class", Value = value.ClassName })
-			table.insert(notes, "load a script, a ModuleScript, a function or a table to look into it")
+			table.insert(notes, "load a script, a ModuleScript, a function or a table to inspect it")
 		end
 	elseif kind == "function" then
 		subject.Kind = "function"
@@ -335,7 +335,7 @@ function Inspect.subject(item: any, total: number?)
 		local ok, text = pcall(tostring, value)
 		table.insert(subject.Facts, { Id = "type", Text = "Type", Value = kind })
 		table.insert(subject.Facts, { Id = "value", Text = "Value", Value = if ok then text else "?" })
-		table.insert(notes, "load a script, a ModuleScript, a function or a table to look into it")
+		table.insert(notes, "load a script, a ModuleScript, a function or a table to inspect it")
 	end
 	if subject.Count > 1 then
 		table.insert(notes, 1, ("%d things are loaded; this shows the first"):format(subject.Count))

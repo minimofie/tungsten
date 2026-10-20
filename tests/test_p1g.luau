@@ -93,7 +93,7 @@ local constants = open("constants")
 local touched = rowWhere(constants, function(n) return n.Value == "Touched" end)
 check("a constant row", touched ~= nil)
 local menu = menuFor("constants", touched)
-check("constant menu: change, no remove (constants can't be nil), use entries", texts(menu) == "Change value…|Keep in a variable…|Copy value|Copy path", texts(menu))
+check("constant menu: change, no remove (constants can't be nil), use entries, no Copy path (no path to a number)", texts(menu) == "Change value…|Keep in a variable…|Copy value", texts(menu))
 
 Undo.clear()
 local form
@@ -167,7 +167,7 @@ H.advance(0.1)
 local upvalues = open("upvalues")
 local ten = rowWhere(upvalues, function(n) return n.Value == 10 end)
 check("an upvalue row", ten ~= nil)
-check("upvalue menu: change, set to nil (danger), use", texts(menuFor("upvalues", ten)) == "Change value…|Set to nil(!)|Keep in a variable…|Copy value|Copy path", texts(menuFor("upvalues", ten)))
+check("upvalue menu: change, set to nil (danger), use", texts(menuFor("upvalues", ten)) == "Change value…|Set to nil(!)|Keep in a variable…|Copy value", texts(menuFor("upvalues", ten)))
 lastPrompt = nil
 pick(menuFor("upvalues", ten), "Change value…").Callback({ Item = ten, Panel = "upvalues", View = view })
 H.advance(0.1)
@@ -217,7 +217,7 @@ check("…$fn sets it", H.FN[onTouched].Upvalues[1] == helper)
 ----------------------------------------------------------------------
 local tbl = rowWhere(upvalues, function(n) return rawequal(n.Value, H.FN[onTouched].Upvalues[2]) end)
 check("a table upvalue row", tbl ~= nil and tbl.Expandable)
-check("table row menu: add, look into it", texts(menuFor("upvalues", tbl)):find("Add entry to", 1, true) ~= nil and texts(menuFor("upvalues", tbl)):find("Look into it", 1, true) ~= nil, texts(menuFor("upvalues", tbl)))
+check("table row menu: add, inspect", texts(menuFor("upvalues", tbl)):find("Add entry to", 1, true) ~= nil and texts(menuFor("upvalues", tbl)):find("Inspect", 1, true) ~= nil, texts(menuFor("upvalues", tbl)))
 lastPrompt = nil
 pick(menuFor("upvalues", tbl), "Add entry to " .. tostring(tbl.Path or tbl.Key) .. "…").Callback({ Item = tbl, Panel = "upvalues", View = view })
 H.advance(0.1)

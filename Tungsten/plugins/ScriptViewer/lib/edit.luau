@@ -169,10 +169,10 @@ function Edit.constantTargets(owner: any, subject: any): ({ any }?, string?)
 		end
 	end
 	if #twins == 0 then
-		return nil, ("none of the %s's running functions is this one (a main chunk runs once and is gone): changing it would change nothing in the game. Its running functions are under Upvalues; right-click one › Look into it"):format(what)
+		return nil, ("none of the %s's running functions is this one (a main chunk runs once and is gone): changing it would change nothing in the game. Its running functions are under Upvalues; right-click one › Inspect"):format(what)
 	end
 	if ownerHash == nil and distinct > 1 then
-		return nil, ("%d running functions of the %s look the same; right-click the one you mean under Upvalues › Look into it, and change it there"):format(distinct, what)
+		return nil, ("%d running functions of the %s look the same; right-click the one you mean under Upvalues › Inspect, and change it there"):format(distinct, what)
 	end
 	table.insert(twins, owner) -- the copy too, so the view shows the change
 	return twins, nil

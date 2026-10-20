@@ -1,7 +1,7 @@
 -- The path bar for values inside scripts: functions and tables are shown by
 -- how they are reached, e.g. require(game.ReplicatedStorage.Combat).Weapons.
 -- Sword.swing (base/access), Copy gives that code, typed and /load paths
--- take it, and the script viewer's Look into it passes it on.
+-- take it, and the script viewer's Inspect passes it on.
 local passed, failed = 0, 0
 local function check(name, cond, detail)
 	if cond then
@@ -217,12 +217,12 @@ for _, node in contents.List:GetItems() do
 end
 check("a module's Contents row", weaponsRow ~= nil)
 for _, item in T.Menus.build("scriptviewer.row", { Item = weaponsRow, Panel = "contents", View = view }) do
-	if item.Text == "Look into it" then
+	if item.Text == "Inspect" then
 		item.Callback()
 	end
 end
 H.advance(0.3)
-check("Look into it: the path bar shows where it is", Loaded.value() == combatValue.Weapons and (crumbs()) == "game › ReplicatedStorage › Combat › require() › Weapons", (crumbs()))
+check("Inspect: the path bar shows where it is", Loaded.value() == combatValue.Weapons and (crumbs()) == "game › ReplicatedStorage › Combat › require() › Weapons", (crumbs()))
 view:Select("contents")
 H.advance(0.3)
 local swordRow
@@ -232,7 +232,7 @@ for _, node in view.Panels.contents.List:GetItems() do
 	end
 end
 for _, item in T.Menus.build("scriptviewer.row", { Item = swordRow, Panel = "contents", View = view }) do
-	if item.Text == "Look into it" then
+	if item.Text == "Inspect" then
 		item.Callback()
 	end
 end
@@ -249,7 +249,7 @@ for _, node in view.Panels.upvalues.List:GetItems() do
 	end
 end
 for _, item in T.Menus.build("scriptviewer.row", { Item = secretRow, Panel = "upvalues", View = view }) do
-	if item.Text == "Look into it" then
+	if item.Text == "Inspect" then
 		item.Callback()
 	end
 end
