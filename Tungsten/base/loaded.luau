@@ -6,14 +6,16 @@
 
 	What can be loaded
 		Instances, or other values wrapped as a target:
-			Loaded.target(value, { Kind?, Label?, Origin?, Access? }) -> target
+			Loaded.target(value, { Kind?, Label?, Origin?, Access?, Info? }) -> target
 		Kind is "function", "table", "thread", "connection", "call" or
 		"value" (worked out from the value when left out). Label is what
 		the path bar shows ("function onTouched"); Origin is the Instance
 		it came from (a script), shown as the crumbs before it. Access
 		(base/access) is how it is reached inside a script, e.g.
 		require(game.ReplicatedStorage.Util).Sub.fn; the path bar shows it
-		(and searches for one when none is given).
+		(and searches for one when none is given). Info is a table the tab
+		that made the target may keep facts in (e.g. where a nested function
+		came from); Tungsten doesn't read it.
 
 		Loaded.load(items, opts?) -> handled   items: a list, or one item
 			opts.By     who loaded it ("you" by default, or a plugin id)
@@ -137,6 +139,7 @@ function Loaded.target(value: any, opts: { [string]: any }?): any
 		Label = label,
 		Origin = o.Origin or (if o.Access then o.Access.Script else nil),
 		Access = o.Access,
+		Info = if type(o.Info) == "table" then table.freeze(table.clone(o.Info)) else nil,
 	}, TARGET))
 end
 
@@ -410,7 +413,7 @@ function Loaded.reload(by: string?): (boolean, string?)
 				if typeof(value) == "Instance" then
 					table.insert(list, value)
 				else
-					table.insert(list, Loaded.target(value, { Access = item.Access, Label = item.Label, Origin = item.Origin }))
+					table.insert(list, Loaded.target(value, { Access = item.Access, Label = item.Label, Origin = item.Origin, Info = item.Info }))
 				end
 			else
 				problem = problem or (if ok then Access.code(item.Access) .. " is nil now" else tostring(value))

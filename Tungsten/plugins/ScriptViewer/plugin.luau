@@ -37,7 +37,7 @@ local state = {
 -- and modules looked up, so not on every load while the tab is closed).
 local function subject()
 	if state.Subject == nil then
-		state.Subject = Inspect.subject(state.Items[1], #state.Items)
+		state.Subject = Inspect.subject(state.Items[1], #state.Items, state.Api and state.Api.loaded.access)
 	end
 	return state.Subject
 end

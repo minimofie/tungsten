@@ -1565,6 +1565,23 @@ env = setmetatable({
 		-- debug.info: H.FN[fn].Source stands in for a game script's chunk
 		-- name ("s"); everything else is Luau's own
 		info = function(fn, what, ...)
+			if realType(fn) == "table" then
+				-- a mock proto: Source, Line and Info.name stand in
+				local out = {}
+				for c in tostring(what):gmatch(".") do
+					if c == "s" then
+						table.insert(out, fn.Source or "=proto")
+					elseif c == "l" then
+						table.insert(out, fn.Line or -1)
+					elseif c == "n" then
+						table.insert(out, (fn.Info and fn.Info.name) or "")
+					elseif c == "a" then
+						table.insert(out, (fn.Info and fn.Info.numparams) or 0)
+						table.insert(out, (fn.Info and fn.Info.is_vararg == 1) or false)
+					end
+				end
+				return table.unpack(out)
+			end
 			local entry = H.FN[fn]
 			if entry and entry.Source and what == "s" then
 				return entry.Source

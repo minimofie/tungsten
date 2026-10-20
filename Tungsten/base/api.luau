@@ -700,6 +700,7 @@ function Api.new(id: string, opts: { [string]: any }?)
 			proto = T.Access.proto,
 			closure = T.Access.closure,
 			extend = T.Access.extend,
+			prefix = T.Access.prefix,
 			crumbs = T.Access.crumbs,
 			code = T.Access.code,
 			parse = T.Access.parse,

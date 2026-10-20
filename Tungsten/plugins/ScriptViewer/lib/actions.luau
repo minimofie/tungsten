@@ -373,15 +373,40 @@ function Actions.accessOf(api, subject, node): any
 		return nil
 	end
 	local base = Actions.subjectAccess(api, subject)
-	-- steps from the loaded function hold only when a function is loaded
-	-- (a script's main function is a copy no path reaches)
-	local fromFunction = base ~= nil and subject ~= nil and subject.Kind == "function"
+	-- steps from the loaded function hold only when a function (or nested
+	-- function) is loaded: a script's main function is a copy no path reaches
+	local fromFunction = base ~= nil and subject ~= nil and (subject.Kind == "function" or subject.Kind == "proto")
+	-- a loaded nested function's k-th running copy: its last step, activated
+	local function copyAccess(k: number): any
+		local last = base.Steps[#base.Steps]
+		if not last or last.Kind ~= "proto" then
+			return nil
+		end
+		return A.extend(A.prefix(base, #base.Steps - 1), { Kind = "closure", Index = last.Index, Copy = k })
+	end
+	if node.Kind == "heading" and type(node.CopyIndex) == "number" and fromFunction and subject.Kind == "proto" then
+		return copyAccess(node.CopyIndex)
+	end
 	if node.Kind == "heading" and type(node.Chain) == "table" and fromFunction then
 		return along(A, base, node.Chain)
 	end
+	if node.Kind == "proto" and type(node.Chain) == "table" and not node.FromCopy then
+		-- a row of the Functions sub-tab: from the loaded function, or from
+		-- the running function it is nested in
+		local root = nil
+		if node.Root ~= nil then
+			local ok, found = pcall(A.find, node.Root)
+			root = if ok then found else nil
+		elseif fromFunction then
+			root = base
+		end
+		return if root then along(A, root, node.Chain) else nil
+	end
 	if node.Kind == "upvalue" and node.Owner ~= nil and type(node.Index) == "number" then
 		local owner = nil
-		if fromFunction and type(node.OwnerChain) == "table" then
+		if fromFunction and subject.Kind == "proto" and type(node.CopyIndex) == "number" then
+			owner = copyAccess(node.CopyIndex)
+		elseif fromFunction and type(node.OwnerChain) == "table" then
 			owner = along(A, base, node.OwnerChain)
 		elseif fromFunction and rawequal(node.Owner, subject.Fn) then
 			owner = base
@@ -417,37 +442,141 @@ function Actions.inspectable(node): boolean
 end
 
 -- The sub-tab that fits a value: the open one when it applies.
-local FUNCTION_TABS = { constants = true, upvalues = true, functions = true, source = true }
+local FUNCTION_TABS = { constants = true, upvalues = true }
 local function tabFor(value: any, current: string?): string?
 	local kind = typeof(value)
 	if kind == "table" then
 		return "contents"
 	elseif kind == "function" or kind == "ProtoProxy" then
-		return if current and FUNCTION_TABS[current] and current ~= "source" then current else "constants"
+		return if current and FUNCTION_TABS[current] then current else "constants"
 	end
 	return nil
 end
 Actions.tabFor = tabFor
 
--- Loads a row's table, function or Instance (its path goes to the path
--- bar) and opens the sub-tab that fits it.
-function Actions.inspect(view, node): boolean
+-- Where a nested function row came from, for its running copies:
+-- { Owner, Index, FromCopy, ScriptSubject } (see Rows.runningCopies).
+function Actions.protoOrigin(view, node): { [string]: any }
+	local subject = view.Subject
+	local origin = { Owner = node.Owner, Index = node.Index, FromCopy = node.FromCopy == true }
+	if subject and (subject.Kind == "script" or subject.Kind == "module") and node.Kind == "heading" then
+		origin.FromCopy = true -- a heading of a script's bytecode copy
+	end
+	if subject and subject.Kind == "proto" and subject.Proto and subject.Proto.FromCopy then
+		origin.FromCopy = true
+		origin.ScriptSubject = subject.Proto.ScriptSubject
+	elseif origin.FromCopy then
+		origin.ScriptSubject = subject
+	end
+	return origin
+end
+
+-- Loads a row's table, function, nested function or Instance (its path
+-- goes to the path bar). opts.Tab: the sub-tab to open (false: stay);
+-- by default the one that fits.
+function Actions.inspect(view, node, opts: { [string]: any }?): boolean
 	local api = view.Api
 	if not Actions.inspectable(node) then
 		return false
 	end
 	local value = node.Value
+	local current = view.Tabs and view.Tabs.Selected
 	if typeof(value) == "Instance" then
 		api.loaded.set(value)
 	else
 		local access = Actions.accessOf(api, view.Subject, node)
-		api.loaded.set(api.loaded.target(value, { Label = describe(node), Access = access }))
+		local info = if typeof(value) == "ProtoProxy" then Actions.protoOrigin(view, node) else nil
+		api.loaded.set(api.loaded.target(value, { Label = describe(node), Access = access, Info = info }))
 	end
-	local wants = tabFor(value, view.Tabs and view.Tabs.Selected)
+	local wants = if opts and opts.Tab ~= nil then opts.Tab else tabFor(value, current)
 	if wants and not view.Destroyed and view.Tabs.Selected ~= wants then
 		view:Select(wants)
 	end
 	return true
+end
+
+-- Loads it and stays on the sub-tab that is open.
+function Actions.load(view, node): boolean
+	return Actions.inspect(view, node, { Tab = false })
+end
+
+-- The running copies of a nested function row (or of the loaded one).
+function Actions.copiesOf(view, node): ({ any }?, string?)
+	if typeof(node.Value) ~= "ProtoProxy" then
+		return nil, "only a nested function has running copies"
+	end
+	local subject = view.Subject
+	if subject and subject.Kind == "proto" and rawequal(node.Value, subject.Fn) then
+		return P.import("lib/rows").runningCopies(node.Value, subject.Proto)
+	end
+	return P.import("lib/rows").runningCopies(node.Value, Actions.protoOrigin(view, node))
+end
+
+-- Loads a nested function's running copy (asks which when there are
+-- several) and opens Upvalues, where its upvalues are.
+function Actions.inspectCopy(view, node): boolean
+	local api = view.Api
+	local copies, why = Actions.copiesOf(view, node)
+	if not copies or #copies == 0 then
+		api.console.warn(why or "no running copies of it exist now")
+		return false
+	end
+	local A = api.loaded.access
+	local function loadCopy(k: number)
+		local fn = copies[k]
+		local access = nil
+		local protoAccess = Actions.accessOf(api, view.Subject, node)
+		local last = protoAccess and protoAccess.Steps[#protoAccess.Steps]
+		if last and last.Kind == "proto" then
+			access = A.extend(A.prefix(protoAccess, #protoAccess.Steps - 1), { Kind = "closure", Index = last.Index, Copy = k })
+		else
+			local ok, found = pcall(A.find, fn)
+			access = if ok then found else nil
+		end
+		api.loaded.set(api.loaded.target(fn, { Label = ("%s · running %d"):format(describe(node), k), Access = access }))
+		if not view.Destroyed then
+			view:Select("upvalues")
+		end
+	end
+	if #copies == 1 then
+		loadCopy(1)
+		return true
+	end
+	local options = {}
+	for k, fn in copies do
+		local okLine, line = pcall(debug.info, fn, "l")
+		table.insert(options, { Value = k, Text = ("running %d%s"):format(k, if okLine and type(line) == "number" and line > 0 then " · line " .. line else "") })
+	end
+	api.prompt.choice({
+		Title = "Which running copy?",
+		Text = ("%d copies of %s are running; each has its own upvalues."):format(#copies, describe(node)),
+		Options = options,
+		OnChoose = function(k)
+			if type(k) == "number" then
+				loadCopy(k)
+			end
+		end,
+	})
+	return true
+end
+
+-- A function's hash (getfunctionhash) or a nested function's code hash.
+function Actions.hashOf(value: any): string?
+	if typeof(value) == "ProtoProxy" then
+		local ok, hash = pcall(function()
+			return value.CodeHash
+		end)
+		return if ok and hash ~= nil then tostring(hash) else nil
+	end
+	if type(value) ~= "function" then
+		return nil
+	end
+	local fn = getfenv(1).getfunctionhash
+	if type(fn) ~= "function" then
+		return nil
+	end
+	local ok, hash = pcall(fn, value)
+	return if ok and type(hash) == "string" then hash else nil
 end
 
 -- A row's path as code: an Instance's path, or how the value is reached
@@ -580,13 +709,39 @@ function Actions.define(api, getView)
 			end,
 		},
 		{
+			Id = "loadhere",
+			Section = "use",
+			Order = 12,
+			Text = "Load (stay here)",
+			Icon = "arrow_right",
+			When = function(ctx)
+				return ctx.Panel == "functions" and Actions.inspectable(ctx.Item)
+			end,
+			Callback = function(ctx)
+				Actions.load(view(ctx), ctx.Item)
+			end,
+		},
+		{
+			Id = "copy_running",
+			Section = "use",
+			Order = 14,
+			Text = "Inspect running copy…",
+			Icon = "arrow_right",
+			When = function(ctx)
+				return type(ctx.Item) == "table" and typeof(ctx.Item.Value) == "ProtoProxy"
+			end,
+			Callback = function(ctx)
+				Actions.inspectCopy(view(ctx), ctx.Item)
+			end,
+		},
+		{
 			Id = "variable",
 			Section = "use",
 			Order = 20,
 			Text = "Keep in a variable…",
 			Icon = "variable",
 			When = function(ctx)
-				return type(ctx.Item) == "table" and ctx.Item.Value ~= nil and ctx.Item.Kind ~= "proto" and ctx.Item.Kind ~= "more"
+				return type(ctx.Item) == "table" and ctx.Item.Value ~= nil and ctx.Item.Kind ~= "more"
 			end,
 			Callback = function(ctx)
 				Actions.setVariable(view(ctx), ctx.Item)

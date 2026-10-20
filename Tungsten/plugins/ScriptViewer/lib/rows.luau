@@ -240,31 +240,34 @@ function Rows.upvalues(fn: any, opts: { [string]: any }?): ({ any }, string?)
 end
 
 -- A nested function (ProtoProxy) as a node; its children are its own.
-local function protoNode(proto: any, id: string, path: string, depth: number, seen)
-	local okInfo, info = call("debug.getinfo", proto)
-	local name = if okInfo and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then info.name else "(anonymous)"
-	local okConst, constants = call("debug.getconstants", proto)
+-- Owner / Index: the function it is nested in and its place there (its
+-- running copies: debug.getproto(Owner, Index, true)). Chain: base/access
+-- steps from the root function. Root: that function, when it isn't the
+-- loaded one (a script's running function). FromCopy: from a script's
+-- bytecode copy (no path reaches it; its running copies are matched).
+local function protoNode(proto: any, id: string, path: string, depth: number, seen, origin)
+	local info = Inspect.protoInfo(proto)
 	local okProtos, protos = call("debug.getprotos", proto)
-	local constantCount = 0
-	if okConst and type(constants) == "table" then
-		for _ in next, constants do
-			constantCount += 1
-		end
-	end
 	local nested = if okProtos and type(protos) == "table" then protos else {}
 	local node = {
 		Id = id,
-		Key = name,
+		Key = info.Name,
 		Path = path,
 		Value = proto,
 		Type = "function",
 		Depth = depth,
 		Kind = "proto",
 		Expandable = #nested > 0 and not seen[proto],
-		Params = if okInfo and type(info) == "table" and type(info.numparams) == "number" then info.numparams else nil,
-		Upvalues = if okInfo and type(info) == "table" and type(info.nups) == "number" then info.nups else nil,
-		Constants = constantCount,
+		Line = info.Line,
+		Params = info.Params,
+		Upvalues = info.Upvalues,
+		Constants = info.Constants or 0,
 		Nested = #nested,
+		Owner = origin.Owner,
+		Index = origin.Index,
+		Chain = origin.Chain,
+		Root = origin.Root,
+		FromCopy = origin.FromCopy,
 	}
 	if node.Expandable then
 		local mine = table.clone(seen)
@@ -272,7 +275,11 @@ local function protoNode(proto: any, id: string, path: string, depth: number, se
 		node.Children = function()
 			local out = {}
 			for index, child in nested do
-				table.insert(out, protoNode(child, id .. "/" .. index, path .. "." .. index, depth + 1, mine))
+				local chain = table.clone(origin.Chain)
+				table.insert(chain, { Kind = "proto", Index = index })
+				table.insert(out, protoNode(child, id .. "/" .. index, path .. "." .. index, depth + 1, mine, {
+					Owner = proto, Index = index, Chain = chain, Root = origin.Root, FromCopy = origin.FromCopy,
+				}))
 			end
 			return out
 		end
@@ -280,11 +287,14 @@ local function protoNode(proto: any, id: string, path: string, depth: number, se
 	return node
 end
 
+-- The nested functions of fn (a function or a ProtoProxy), as a tree.
+-- opts.Root / opts.FromCopy are passed on to the rows (see protoNode).
 function Rows.functions(fn: any, opts: { [string]: any }?): ({ any }, string?)
+	local o = opts or {}
 	if fn == nil then
 		return {}, "nothing to inspect"
 	end
-	if Inspect.isC(fn) then
+	if not Inspect.isProto(fn) and Inspect.isC(fn) then
 		return {}, "a C function has no nested functions"
 	end
 	local ok, protos = call("debug.getprotos", fn)
@@ -293,10 +303,163 @@ function Rows.functions(fn: any, opts: { [string]: any }?): ({ any }, string?)
 	end
 	local out = {}
 	for index, proto in protos do
-		table.insert(out, protoNode(proto, "p" .. index, tostring(index), 0, { [fn] = true }))
+		table.insert(out, protoNode(proto, (o.IdPrefix or "p") .. index, tostring(index), o.Depth or 0, { [fn] = true }, {
+			Owner = fn, Index = index, Chain = { { Kind = "proto", Index = index } }, Root = o.Root, FromCopy = o.FromCopy,
+		}))
 	end
 	return out, nil
 end
+
+-- A running function as a row of the Functions sub-tab; it opens into its
+-- nested functions.
+local function liveNode(fn: any, id: string, depth: number)
+	local name = Inspect.functionName(fn)
+	local okLine, line = pcall(debug.info, fn, "l")
+	local okInfo, info = call("debug.getinfo", fn)
+	local okConst, constants = call("debug.getconstants", fn)
+	local okProtos, protos = call("debug.getprotos", fn)
+	local constantCount = 0
+	if okConst and type(constants) == "table" then
+		for _ in next, constants do
+			constantCount += 1
+		end
+	end
+	local nested = if okProtos and type(protos) == "table" then #protos else 0
+	local node = {
+		Id = id,
+		Key = name,
+		Path = name,
+		Value = fn,
+		Type = "function",
+		Depth = depth,
+		Kind = "function",
+		Expandable = nested > 0,
+		Line = if okLine and type(line) == "number" and line > 0 then line else nil,
+		Params = if okInfo and type(info) == "table" and type(info.numparams) == "number" then info.numparams else nil,
+		Upvalues = if okInfo and type(info) == "table" and type(info.nups) == "number" then info.nups else nil,
+		Constants = constantCount,
+		Nested = nested,
+	}
+	if node.Expandable then
+		node.Children = function()
+			return (Rows.functions(fn, { IdPrefix = id .. "/p", Depth = depth + 1, Root = fn }))
+		end
+	end
+	return node
+end
+
+-- A group heading in the Functions sub-tab ("Running", "In the bytecode").
+local function group(id: string, title: string, children: { any }, why: string?)
+	return {
+		Id = id,
+		Key = title,
+		Path = title,
+		Type = "",
+		Depth = 0,
+		Kind = "heading",
+		Expandable = #children > 0,
+		Children = function()
+			return children
+		end,
+		Count = #children,
+		Note = why,
+	}
+end
+
+-- The Functions sub-tab's rows. A script or ModuleScript: its running
+-- functions, then the nested functions in its bytecode (from the copy).
+-- A function or nested function: its nested functions.
+function Rows.functionsOf(subject): ({ any }, string?)
+	if subject == nil or subject.Kind == "none" then
+		return {}, "nothing loaded"
+	end
+	if subject.Kind == "script" or subject.Kind == "module" then
+		local running = {}
+		local live, why = Rows.liveFunctions(subject)
+		for index, fn in live or {} do
+			table.insert(running, liveNode(fn, "r" .. index, 1))
+		end
+		local copied = {}
+		if subject.Fn ~= nil then
+			copied = Rows.functions(subject.Fn, { IdPrefix = "b", Depth = 1, FromCopy = true })
+		end
+		return {
+			group("running", "Running", running, if live then nil else why),
+			group("bytecode", "In the bytecode", copied, if subject.Fn == nil then "its bytecode couldn't be read" else nil),
+		}, nil
+	end
+	if subject.Fn == nil then
+		return {}, if subject.Kind == "table" then "a table has no functions (its entries are in the Contents sub-tab)" else "this has no function to inspect"
+	end
+	return Rows.functions(subject.Fn)
+end
+
+-- Same constants, slot for slot?
+local function sameConstants(a: any, b: any): boolean
+	local okA, ca = call("debug.getconstants", a)
+	local okB, cb = call("debug.getconstants", b)
+	if not okA or not okB or type(ca) ~= "table" or type(cb) ~= "table" then
+		return false
+	end
+	for index, value in next, ca do
+		if not rawequal(cb[index], value) and not (value ~= value and cb[index] ~= cb[index]) then
+			return false
+		end
+	end
+	for index in next, cb do
+		if ca[index] == nil then
+			return false
+		end
+	end
+	return true
+end
+Rows.sameConstants = sameConstants
+
+-- The running copies of a nested function: debug.getproto(owner, index,
+-- true), or for one from a script's bytecode copy, the script's running
+-- functions with the same constants (and line, when known).
+-- origin: { Owner, Index, FromCopy, ScriptSubject } (a subject's Proto, or a row)
+function Rows.runningCopies(proto: any, origin: any): ({ any }?, string?)
+	if type(origin) ~= "table" then
+		return nil, "where it came from isn't known (inspect it from its function to see its running copies)"
+	end
+	if origin.FromCopy then
+		local scriptSubject = origin.ScriptSubject
+		if type(scriptSubject) ~= "table" then
+			return nil, "it comes from a script's bytecode and the script isn't known"
+		end
+		local live, why = Rows.liveFunctions(scriptSubject)
+		if not live then
+			return nil, why
+		end
+		local okLine, line = pcall(debug.info, proto, "l")
+		local wantLine = if okLine and type(line) == "number" and line > 0 then line else nil
+		local out = {}
+		for _, fn in live do
+			local okFnLine, fnLine = pcall(debug.info, fn, "l")
+			local sameLine = wantLine == nil or not okFnLine or fnLine == wantLine
+			if sameLine and sameConstants(proto, fn) then
+				table.insert(out, fn)
+			end
+		end
+		return out, nil
+	end
+	if origin.Owner == nil or type(origin.Index) ~= "number" then
+		return nil, "where it came from isn't known (inspect it from its function to see its running copies)"
+	end
+	local ok, copies = call("debug.getproto", origin.Owner, origin.Index, true)
+	if not ok or type(copies) ~= "table" then
+		return nil, "debug.getproto didn't list its running copies: " .. tostring(copies)
+	end
+	local out = {}
+	for _, fn in copies do
+		if type(fn) == "function" then
+			table.insert(out, fn)
+		end
+	end
+	return out, nil
+end
+
 
 -- A table's entries as root rows (the Table sub-tab).
 function Rows.entries(t: any): ({ any }, string?)
@@ -352,6 +515,26 @@ local function heading(id: string, fn: any, path: string, children: { any }, why
 	}
 end
 
+-- A nested function's running copies with their upvalues, a heading each.
+function Rows.upvaluesOfCopies(copies: { any }): ({ any }, string?)
+	local out = {}
+	for index, fn in copies do
+		local rows = Rows.upvalues(fn)
+		local title = "running " .. index
+		prefix(rows, "c" .. index, title)
+		local node = heading("c" .. index, fn, title, rows)
+		node.CopyIndex = index
+		for _, row in rows do
+			row.CopyIndex = index
+		end
+		table.insert(out, node)
+	end
+	if #out == 0 then
+		return {}, "no running copies of it exist now (none was made, or they are gone)"
+	end
+	return out, nil
+end
+
 -- Constants: the function's own, then every nested function's (depth first).
 function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 	if fn == nil then
@@ -361,7 +544,7 @@ function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 		return {}, "a C function has no constants"
 	end
 	local out = {}
-	local function add(target, id: string, path: string, chain, seen)
+	local function add(target, id: string, path: string, chain, seen, owner, index)
 		if #out >= Rows.MaxHeadings then
 			return
 		end
@@ -369,6 +552,7 @@ function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 		prefix(rows, id, path)
 		local node = heading(id, target, path, rows)
 		node.Chain = chain
+		node.Owner, node.Index = owner, index -- a nested function: where it is (running copies)
 		for _, row in rows do
 			row.OwnerChain = chain
 		end
@@ -381,7 +565,7 @@ function Rows.constantsByFunction(fn: any, opts): ({ any }, string?)
 					mine[proto] = true
 					local nextChain = table.clone(chain)
 					table.insert(nextChain, { Kind = "proto", Index = index })
-					add(proto, id .. "." .. index, (if path == "main" then "" else path .. ".") .. index, nextChain, mine)
+					add(proto, id .. "." .. index, (if path == "main" then "" else path .. ".") .. index, nextChain, mine, target, index)
 				end
 			end
 		end

@@ -43,6 +43,7 @@ local Serialize = P.import("lib/serialize")
 local Refs = P.import("lib/refs")
 local Actions = P.import("lib/actions")
 local Edit = P.import("lib/edit")
+local Details = P.import("lib/details")
 
 local View = {}
 View.__index = View
@@ -94,26 +95,30 @@ local VALUE_COLUMNS = {
 }
 local FUNCTION_COLUMNS = {
 	Tree = {
-		{ Key = "Name", Title = "Function", Flex = true, Min = 200, Get = treeName },
-		{ Key = "Params", Title = "Params", Width = 70 },
-		{ Key = "Upvalues", Title = "Upvalues", Width = 80 },
-		{ Key = "Constants", Title = "Constants", Width = 85 },
-		{ Key = "Nested", Title = "Nested", Width = 70 },
+		{ Key = "Name", Title = "Function", Flex = true, Min = 180, Get = treeName },
+		{ Key = "Line", Title = "Line", Width = 50 },
+		{ Key = "Params", Title = "Params", Width = 60 },
+		{ Key = "Upvalues", Title = "Upvalues", Width = 70 },
+		{ Key = "Constants", Title = "Constants", Width = 75 },
+		{ Key = "Nested", Title = "Nested", Width = 60 },
 	},
 	List = {
 		{ Key = "Path", Title = "Path", Width = 90, Mono = true },
-		{ Key = "Key", Title = "Function", Flex = true, Min = 180 },
-		{ Key = "Params", Title = "Params", Width = 70 },
-		{ Key = "Upvalues", Title = "Upvalues", Width = 80 },
-		{ Key = "Constants", Title = "Constants", Width = 85 },
-		{ Key = "Nested", Title = "Nested", Width = 70 },
+		{ Key = "Key", Title = "Function", Flex = true, Min = 160 },
+		{ Key = "Line", Title = "Line", Width = 50 },
+		{ Key = "Params", Title = "Params", Width = 60 },
+		{ Key = "Upvalues", Title = "Upvalues", Width = 70 },
+		{ Key = "Constants", Title = "Constants", Width = 75 },
+		{ Key = "Nested", Title = "Nested", Width = 60 },
 	},
 }
+View.DetailsShare = 0.4 -- the Functions sub-tab's details pane: this much of the width
 
 local KIND_TEXT = {
 	script = "script",
 	module = "ModuleScript",
 	["function"] = "function",
+	proto = "nested function",
 	table = "table",
 	value = "nothing to inspect",
 	none = "",
@@ -348,6 +353,10 @@ function View:_buildDataPanel(id: string, holder: Frame)
 	if def.Refs then
 		self:_buildRefs(id, canvas)
 	end
+	if id == "functions" then
+		-- the selected function's facts and actions, right of the list
+		panel.Details = Details.new(self, canvas)
+	end
 	-- the Table view: the rows written as a Luau table
 	panel.Text = api.ui.new("TextEditor", {
 		Parent = canvas,
@@ -415,6 +424,16 @@ function View:_layout(id: string)
 	local listHeight = height - top - bottom
 	panel.ListHolder.Position = UDim2.fromOffset(12, top)
 	panel.ListHolder.Size = UDim2.new(1, -24, 0, listHeight)
+	if panel.Details then
+		local share = View.DetailsShare
+		local showDetails = panel.Mode ~= "Table"
+		panel.Details.Instance.Visible = showDetails
+		if showDetails then
+			panel.ListHolder.Size = UDim2.new(1 - share, -18, 0, listHeight)
+			panel.Details.Instance.Position = UDim2.new(1 - share, 6, 0, top)
+			panel.Details.Instance.Size = UDim2.new(share, -18, 0, listHeight)
+		end
+	end
 	panel.Text.Instance.Position = UDim2.fromOffset(12, PAD)
 	panel.Text.Instance.Size = UDim2.new(1, -24, 0, height - PAD * 2)
 	if panel.RefsFrame then
@@ -480,6 +499,12 @@ function View:_makeList(id: string)
 			self:FindReferences(id, selected[1])
 		end)
 		self:FindReferences(id, nil)
+	end
+	if panel.Details then
+		self.Api.connect(panel.List.SelectionChanged, function(selected)
+			panel.Details:Show(selected[1])
+		end)
+		panel.Details:Show(nil)
 	end
 end
 
@@ -676,9 +701,15 @@ function View:_roots(id: string): ({ any }, string?)
 	if subject == nil or subject.Kind == "none" then
 		return {}, "nothing loaded"
 	end
+	if id == "functions" then
+		return Rows.functionsOf(subject)
+	end
 	if id == "contents" then
 		if subject.Table ~= nil then
 			return Rows.entries(subject.Table)
+		end
+		if subject.Kind == "proto" then
+			return {}, "a nested function has no contents (its constants, upvalues and nested functions are in their sub-tabs)"
 		end
 		if subject.Kind == "module" then
 			return {}, if subject.Returned ~= nil then ("it returns a %s, not a table"):format(typeof(subject.Returned)) else "the game hasn't required it yet, so its table isn't shown"
@@ -693,6 +724,21 @@ function View:_roots(id: string): ({ any }, string?)
 			return {}, why
 		end
 		return Rows.upvaluesOfFunctions(live)
+	end
+	if id == "upvalues" and subject.Kind == "proto" then
+		-- a prototype has no upvalue values: its running copies do
+		local copies, why = Rows.runningCopies(subject.Fn, subject.Proto)
+		if not copies then
+			return {}, why
+		end
+		local roots, whyNone = Rows.upvaluesOfCopies(copies)
+		if wide then
+			for _, node in (Rows.upvaluesWithNested(subject.Fn)) do
+				table.insert(roots, node)
+			end
+			whyNone = if #roots > 0 then nil else whyNone
+		end
+		return roots, whyNone
 	end
 	local fn = subject.Fn
 	if fn == nil then
@@ -709,7 +755,7 @@ function View:_roots(id: string): ({ any }, string?)
 		end
 		return Rows.upvalues(fn)
 	end
-	return Rows.functions(fn)
+	return {}, nil
 end
 
 ----------------------------------------------------------------------
@@ -1111,6 +1157,10 @@ function View.summary(subject): string
 		end
 		if facts.required then
 			table.insert(parts, if facts.required == "yes" then "required" else "not required yet")
+		end
+	elseif subject.Kind == "proto" then
+		if subject.Proto and subject.Proto.FromCopy then
+			table.insert(parts, "from the script's bytecode")
 		end
 	elseif subject.Kind == "function" then
 		parts[1] = tostring(facts.kind or parts[1])

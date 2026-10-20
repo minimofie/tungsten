@@ -20,6 +20,10 @@
 	debug.setconstant (1-based; function or ProtoProxy), debug.setupvalue,
 	isreadonly / setreadonly, getfunctionhash, filtergc.
 
+	A nested function (ProtoProxy) is changed through debug.setconstant on
+	the proxy: every copy of it shares its constants. One from a script's
+	bytecode copy goes to its running copies (Rows.runningCopies).
+
 	A script's or ModuleScript's constants are read from a copy compiled
 	again from its bytecode (getscriptclosure: "not the closure currently
 	running"). opts.Subject set: a constant of that copy is written to the
@@ -140,6 +144,16 @@ end
 -- compiled copy) the running functions that are that function.
 -- -> { targets } | nil, why
 function Edit.constantTargets(owner: any, subject: any): ({ any }?, string?)
+	-- a nested function from a script's bytecode copy: its running copies
+	if type(subject) == "table" and subject.Kind == "proto" and rawequal(owner, subject.Fn) and subject.Proto and subject.Proto.FromCopy then
+		local copies, why = Rows.runningCopies(owner, subject.Proto)
+		if not copies or #copies == 0 then
+			return nil, "this nested function comes from the script's bytecode copy and none of its running copies was found" .. (if why then " (" .. why .. ")" else "") .. ": changing it would change nothing in the game"
+		end
+		local targets = table.clone(copies)
+		table.insert(targets, owner) -- the copy too, so the view shows the change
+		return targets, nil
+	end
 	if type(subject) ~= "table" or (subject.Kind ~= "script" and subject.Kind ~= "module") then
 		return { owner }, nil
 	end

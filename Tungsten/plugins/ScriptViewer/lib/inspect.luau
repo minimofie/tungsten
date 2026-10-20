@@ -6,12 +6,19 @@
 	hands back the cached value.
 
 		local subject = Inspect.subject(item, count)   -- item: Instance or a loaded target
-		subject.Kind     "script" | "module" | "function" | "table" | "value" | "none"
+		subject.Kind     "script" | "module" | "function" | "proto" | "table" | "value" | "none"
 		subject.Title    what it is called      subject.Icon   an icon name
 		subject.Fn       the function to inspect (a script's main function)
 		subject.Table    the table to inspect (a module's returned table)
 		subject.Facts    { { Id, Text, Value, Hint? } } in Overview order
 		subject.Notes    { text } things the Overview says under the facts
+		subject.Proto    (a nested function) where it came from: { Owner, Index,
+		                 FromCopy, Script } (FromCopy: from a script's bytecode
+		                 copy, so its running copies are found by matching)
+
+	A nested function (a ProtoProxy, from debug.getproto / getprotos) is
+	the "proto" kind: its Fn is the proxy (constants and nested functions
+	read and written through it); its running copies hold upvalues.
 
 	Every Volt call is guarded: a missing or failing function leaves its
 	fact out (the Notes say which one).
@@ -26,7 +33,7 @@ Inspect.Uses = {
 	"getscriptclosure", "getsenv", "getrunningscripts", "getscripthash",
 	"getloadedmodules", "getfunctionhash", "iscclosure", "isexecutorclosure",
 	"isreadonly", "getrawmetatable", "debug.getinfo", "debug.getconstants",
-	"debug.getupvalues", "debug.getprotos",
+	"debug.getupvalues", "debug.getprotos", "debug.getproto",
 }
 
 -- A Volt function by name ("debug.getinfo" too), or nil.
@@ -181,6 +188,75 @@ local function addFunctionFacts(subject, fn: any, notes: { string })
 end
 
 ----------------------------------------------------------------------
+-- Nested functions (ProtoProxy)
+----------------------------------------------------------------------
+
+function Inspect.isProto(value: any): boolean
+	return typeof(value) == "ProtoProxy"
+end
+
+-- Name, source and line of a nested function (debug.info takes a ProtoProxy).
+function Inspect.protoInfo(proto: any): { [string]: any }
+	local out = { Name = "(anonymous)" }
+	local okInfo, info = call("debug.getinfo", proto)
+	if okInfo and type(info) == "table" then
+		if type(info.name) == "string" and info.name ~= "" then
+			out.Name = info.name
+		end
+		out.Params = if type(info.numparams) == "number" then info.numparams else nil
+		out.Vararg = info.is_vararg == 1 or info.is_vararg == true
+		out.Upvalues = if type(info.nups) == "number" then info.nups else nil
+		out.Source = if type(info.short_src) == "string" then info.short_src elseif type(info.source) == "string" then info.source else nil
+	end
+	local ok, source, line = pcall(debug.info, proto, "sl")
+	if ok then
+		out.Source = out.Source or (if type(source) == "string" then source else nil)
+		out.Line = if type(line) == "number" and line > 0 then line else nil
+	end
+	local okConst, constants = call("debug.getconstants", proto)
+	out.Constants = if okConst and type(constants) == "table" then count(constants) else nil
+	local okProtos, protos = call("debug.getprotos", proto)
+	out.Nested = if okProtos and type(protos) == "table" then #protos else nil
+	local okHash, hash = pcall(function()
+		return proto.CodeHash
+	end)
+	out.CodeHash = if okHash and type(hash) == "number" then hash else nil
+	return out
+end
+
+local function addProtoFacts(subject, proto: any, notes: { string })
+	local facts = subject.Facts
+	local info = Inspect.protoInfo(proto)
+	subject.Title = info.Name
+	table.insert(facts, { Id = "kind", Text = "Kind", Value = "nested function prototype" })
+	if info.Source then
+		table.insert(facts, { Id = "source", Text = "Source", Value = info.Source })
+	end
+	if info.Line then
+		table.insert(facts, { Id = "line", Text = "Defined at", Value = "line " .. info.Line })
+	end
+	if info.Params then
+		table.insert(facts, { Id = "params", Text = "Parameters", Value = tostring(info.Params) .. (if info.Vararg then " + ..." else "") })
+	end
+	if info.Upvalues then
+		table.insert(facts, { Id = "upvalues", Text = "Upvalues", Value = tostring(info.Upvalues) })
+	end
+	if info.Constants then
+		table.insert(facts, { Id = "constants", Text = "Constants", Value = tostring(info.Constants) })
+	end
+	if info.Nested then
+		table.insert(facts, { Id = "functions", Text = "Nested functions", Value = tostring(info.Nested) })
+	end
+	if info.CodeHash then
+		table.insert(facts, { Id = "hash", Text = "Code hash", Value = tostring(info.CodeHash), Hint = "a 32-bit hash of its instructions" })
+	end
+	table.insert(notes, "a nested function's prototype: its constants and nested functions are read and changed here (every copy shares them); its running copies hold the upvalues (Upvalues)")
+	if subject.Proto and subject.Proto.FromCopy then
+		table.insert(notes, "it comes from the script's bytecode copy: changes go to the running copies that match it")
+	end
+end
+
+----------------------------------------------------------------------
 -- Tables
 ----------------------------------------------------------------------
 
@@ -288,7 +364,44 @@ local function valueOf(item: any): any
 	return item
 end
 
-function Inspect.subject(item: any, total: number?)
+-- Where a loaded nested function came from: the target's Info, or the
+-- last step of its path (debug.getproto(owner, i)).
+local function protoOrigin(item: any, access: any): { [string]: any }?
+	if type(item) ~= "table" then
+		return nil
+	end
+	local info = rawget(item, "Info")
+	if type(info) == "table" and info.Owner ~= nil and type(info.Index) == "number" then
+		return { Owner = info.Owner, Index = info.Index, FromCopy = info.FromCopy == true, Script = info.Script, ScriptSubject = info.ScriptSubject }
+	end
+	local path = rawget(item, "Access")
+	if access and type(path) == "table" and type(path.Steps) == "table" then
+		local last = path.Steps[#path.Steps]
+		if last and last.Kind == "proto" then
+			local okPrefix, prefix = pcall(function()
+				local steps = {}
+				for index = 1, #path.Steps - 1 do
+					steps[index] = path.Steps[index]
+				end
+				local root = access.root(path.Script)
+				local a = root
+				for _, step in steps do
+					a = access.extend(a, step)
+				end
+				return a
+			end)
+			if okPrefix and prefix then
+				local ok, owner = access.resolve(prefix)
+				if ok and owner ~= nil then
+					return { Owner = owner, Index = last.Index }
+				end
+			end
+		end
+	end
+	return nil
+end
+
+function Inspect.subject(item: any, total: number?, access: any?)
 	local subject = { Kind = "none", Title = "Nothing loaded", Icon = "type_function", Facts = {}, Notes = {}, Item = item, Count = total or (if item ~= nil then 1 else 0) }
 	if item == nil then
 		return subject
@@ -315,6 +428,15 @@ function Inspect.subject(item: any, total: number?)
 			subject.Icon = "object"
 			table.insert(subject.Facts, { Id = "class", Text = "Class", Value = value.ClassName })
 			table.insert(notes, "load a script, a ModuleScript, a function or a table to inspect it")
+		end
+	elseif kind == "ProtoProxy" then
+		subject.Kind = "proto"
+		subject.Icon = "type_function"
+		subject.Fn = value
+		subject.Proto = protoOrigin(item, access)
+		addProtoFacts(subject, value, notes)
+		if type(item) == "table" and item ~= value and type(item.Label) == "string" and subject.Title == "(anonymous)" then
+			subject.Title = item.Label
 		end
 	elseif kind == "function" then
 		subject.Kind = "function"
